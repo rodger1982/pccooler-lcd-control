@@ -4,16 +4,15 @@ build-backend="setuptools.build_meta"
 
 [project]
 name="pccooler-lcd-control"
-version="2.0.0a17"
-description="Linux support for PCCOOLER CP3 LCD"
+version="3.0.0b1"
+description="Cross-platform control and layout designer for PCCOOLER CP3 LCD displays"
 requires-python=">=3.11"
 dependencies=["pyserial>=3.5","psutil>=5.9","Pillow>=10","PySide6>=6.7"]
 
+
 [project.scripts]
+pccooler-lcd-control="pccooler_lcd.unified:main"
 pccooler-lcd="pccooler_lcd.cli:main"
-pccooler-lcd-gui="pccooler_lcd.gui:main"
-pccooler-lcd-studio="pccooler_lcd.qt.app:main"
-pccooler-lcd-control="pccooler_lcd.qt.app:main"
 
 [tool.setuptools]
 package-dir={""="app"}

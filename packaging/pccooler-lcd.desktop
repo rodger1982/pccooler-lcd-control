@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=PCCOOLER LCD
-Comment=Configure the PCCOOLER Linux LCD dashboard
-Exec=pccooler-lcd-gui
-Icon=video-display
-Terminal=false
-Type=Application
-Categories=Settings;HardwareSettings;
-StartupNotify=true

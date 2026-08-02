@@ -1,36 +1,68 @@
+param(
+    [switch]$SkipInstaller
+)
+
 $ErrorActionPreference = "Stop"
-Set-Location (Split-Path -Parent $PSScriptRoot)
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $ProjectRoot
 
 if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
-    throw "Python launcher 'py' was not found. Install Python 3.11+ from python.org."
+    throw "Python launcher 'py' was not found. Install 64-bit Python 3.12."
 }
 
 if (-not (Test-Path ".venv-win")) {
     py -3.12 -m venv .venv-win
 }
 
-& .\.venv-win\Scripts\python.exe -m pip install --upgrade pip
-& .\.venv-win\Scripts\python.exe -m pip install -r windows\requirements-windows.txt
-& .\.venv-win\Scripts\python.exe -m pip install .
+$Python = Join-Path $ProjectRoot ".venv-win\Scripts\python.exe"
+& $Python -m pip install --upgrade pip
+& $Python -m pip install -r windows\requirements-windows.txt
+& $Python -m pip install .
 
-$ffmpeg = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
-$ffprobe = Get-Command ffprobe.exe -ErrorAction SilentlyContinue
-$extra = @()
-if ($ffmpeg -and $ffprobe) {
-    $extra += @("--add-binary", "$($ffmpeg.Source);.")
-    $extra += @("--add-binary", "$($ffprobe.Source);.")
-} else {
-    Write-Warning "FFmpeg was not found. The EXE will work, but MP4 support requires ffmpeg.exe and ffprobe.exe in PATH or beside the EXE."
-}
+Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
 
-& .\.venv-win\Scripts\pyinstaller.exe `
+& (Join-Path $ProjectRoot ".venv-win\Scripts\pyinstaller.exe") `
     --noconfirm `
     --clean `
-    --windowed `
-    --name "PCCOOLER-LCD-Control" `
-    --collect-all PySide6 `
-    --collect-submodules pccooler_lcd `
-    @extra `
-    windows\windows_entry.py
+    windows\pccooler-lcd-control.spec
 
-Write-Host "Build complete: dist\PCCOOLER-LCD-Control\PCCOOLER-LCD-Control.exe"
+$Exe = Join-Path $ProjectRoot "dist\PCCOOLER-LCD-Control\PCCOOLER-LCD-Control.exe"
+if (-not (Test-Path $Exe)) {
+    throw "PyInstaller did not create the application executable."
+}
+
+Write-Host ""
+Write-Host "Portable application built:"
+Write-Host "  $Exe"
+
+if ($SkipInstaller) {
+    exit 0
+}
+
+$Iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+if (-not $Iscc) {
+    $CommonPaths = @(
+        "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+        "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+    )
+    foreach ($Candidate in $CommonPaths) {
+        if (Test-Path $Candidate) {
+            $Iscc = Get-Item $Candidate
+            break
+        }
+    }
+}
+
+if (-not $Iscc) {
+    Write-Warning "Inno Setup was not found. Install it with:"
+    Write-Warning "  winget install JRSoftware.InnoSetup"
+    Write-Warning "The portable application was still built successfully."
+    exit 0
+}
+
+& $Iscc.Source windows\installer.iss
+
+Write-Host ""
+Write-Host "Windows installer built:"
+Write-Host "  dist\installer\PCCOOLER-LCD-Control-Setup.exe"

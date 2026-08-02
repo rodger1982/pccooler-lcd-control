@@ -1,11 +1,11 @@
 [Unit]
-Description=PCCOOLER LCD live dashboard
+Description=PCCOOLER-LCD Control startup layout
 After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/pccooler-lcd startup-dashboard
+ExecStart=/usr/bin/pccooler-lcd-control startup-dashboard
 Restart=on-failure
 RestartSec=3
 

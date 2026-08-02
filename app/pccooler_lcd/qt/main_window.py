@@ -48,6 +48,8 @@ from ..layout import (
     save_layout,
 )
 from ..theme_engine import generate_contrast_theme
+from ..paths import ensure_tree
+from ..settings import load_settings, save_settings
 from ..platform import config_dir
 from .canvas import DesignScene, DesignView, WidgetGraphicsItem
 
@@ -92,9 +94,15 @@ QToolBar {
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("PCCOOLER-LCD Control")
+        self.setWindowTitle("PCCOOLER-LCD Control 3")
         self.resize(1280, 780)
         self.setStyleSheet(DARK_STYLE)
+
+        self.paths = ensure_tree()
+        self.config_dir = self.paths["root"]
+        self.layout_library_dir = self.paths["layouts"]
+        self.startup_config_path = self.paths["startup"]
+        self.settings = load_settings()
 
         self.layout_model = default_layout()
         self.layout_path: Path | None = None
@@ -120,6 +128,7 @@ class MainWindow(QMainWindow):
         self.build_properties_dock()
         self.build_theme_dock()
         self.build_preview_dock()
+        self.build_settings_dock()
         self.populate_scene()
         self.load_startup_layout()
 
@@ -397,102 +406,102 @@ class MainWindow(QMainWindow):
             3000,
         )
 
-def startup_layout_path(self):
-    if not self.startup_config_path.is_file():
-        return None
-    try:
-        data = json.loads(
-            self.startup_config_path.read_text(
-                encoding="utf-8"
+    def startup_layout_path(self):
+        if not self.startup_config_path.is_file():
+            return None
+        try:
+            data = json.loads(
+                self.startup_config_path.read_text(
+                    encoding="utf-8"
+                )
             )
+        except (OSError, ValueError):
+            return None
+
+        raw_path = data.get("layout")
+        if not raw_path:
+            return None
+        path = Path(raw_path).expanduser()
+        return path if path.is_file() else None
+
+    def set_startup_layout(self):
+        item = self.layout_list.currentItem()
+        if item:
+            path = Path(item.data(Qt.UserRole))
+        elif self.layout_path:
+            path = Path(self.layout_path)
+        else:
+            QMessageBox.warning(
+                self,
+                "Startup Layout",
+                "Save or select a layout first.",
+            )
+            return
+
+        if not path.is_file():
+            QMessageBox.warning(
+                self,
+                "Startup Layout",
+                "The selected layout file does not exist.",
+            )
+            return
+
+        self.startup_config_path.write_text(
+            json.dumps(
+                {
+                    "layout": str(path.resolve()),
+                    "name": self.layout_model.name,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
         )
-    except (OSError, ValueError):
-        return None
-
-    raw_path = data.get("layout")
-    if not raw_path:
-        return None
-    path = Path(raw_path).expanduser()
-    return path if path.is_file() else None
-
-def set_startup_layout(self):
-    item = self.layout_list.currentItem()
-    if item:
-        path = Path(item.data(Qt.UserRole))
-    elif self.layout_path:
-        path = Path(self.layout_path)
-    else:
-        QMessageBox.warning(
-            self,
-            "Startup Layout",
-            "Save or select a layout first.",
+        self.refresh_layout_library()
+        self.statusBar().showMessage(
+            f"Startup layout: {self.layout_model.name}",
+            4000,
         )
-        return
 
-    if not path.is_file():
-        QMessageBox.warning(
-            self,
-            "Startup Layout",
-            "The selected layout file does not exist.",
+    def load_startup_layout(self):
+        path = self.startup_layout_path()
+        if not path:
+            return False
+
+        try:
+            self.layout_model = load_layout(path)
+        except Exception:
+            return False
+
+        self.layout_path = path
+        self.background_entry.setText(
+            self.layout_model.background
         )
-        return
-
-    self.startup_config_path.write_text(
-        json.dumps(
+        self.background_type.setCurrentIndex(
             {
-                "layout": str(path.resolve()),
-                "name": self.layout_model.name,
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    self.refresh_layout_library()
-    self.statusBar().showMessage(
-        f"Startup layout: {self.layout_model.name}",
-        4000,
-    )
-
-def load_startup_layout(self):
-    path = self.startup_layout_path()
-    if not path:
-        return False
-
-    try:
-        self.layout_model = load_layout(path)
-    except Exception:
-        return False
-
-    self.layout_path = path
-    self.background_entry.setText(
-        self.layout_model.background
-    )
-    self.background_type.setCurrentIndex(
-        {
-            "auto": 0,
-            "static": 1,
-            "gif": 2,
-        }.get(self.layout_model.background_type, 0)
-    )
-    self.background_fit.setCurrentIndex(
-        1
-        if self.layout_model.background_fit == "contain"
-        else 0
-    )
-    self.overlay_spin.setValue(
-        self.layout_model.overlay_alpha
-    )
-    self.load_gif_preview(
-        self.layout_model.background
-        if self.layout_model.background_type == "gif"
-        else None
-    )
-    self.populate_scene()
-    self.statusBar().showMessage(
-        f"Loaded startup layout: {self.layout_model.name}",
-        4000,
-    )
-    return True
+                "auto": 0,
+                "static": 1,
+                "gif": 2,
+            }.get(self.layout_model.background_type, 0)
+        )
+        self.background_fit.setCurrentIndex(
+            1
+            if self.layout_model.background_fit == "contain"
+            else 0
+        )
+        self.overlay_spin.setValue(
+            self.layout_model.overlay_alpha
+        )
+        self.load_gif_preview(
+            self.layout_model.background
+            if self.layout_model.background_type == "gif"
+            else None
+        )
+        self.populate_scene()
+        self.statusBar().showMessage(
+            f"Loaded startup layout: {self.layout_model.name}",
+            4000,
+        )
+        return True
 
     def delete_library_layout(self):
         item = self.layout_list.currentItem()
@@ -632,6 +641,43 @@ def load_startup_layout(self):
         layout.addWidget(self.preview_label)
         dock.setWidget(widget)
         self.addDockWidget(Qt.BottomDockWidgetArea, dock)
+
+
+    def build_settings_dock(self):
+        dock = QDockWidget("Settings", self)
+        widget = QWidget()
+        form = QFormLayout(widget)
+
+        self.device_entry = QLineEdit(self.settings.device)
+        form.addRow("Device", self.device_entry)
+
+        self.refresh_spin = QDoubleSpinBox()
+        self.refresh_spin.setRange(0.1, 30.0)
+        self.refresh_spin.setDecimals(1)
+        self.refresh_spin.setValue(self.settings.refresh_interval)
+        form.addRow("Refresh seconds", self.refresh_spin)
+
+        self.video_fps_spin = QDoubleSpinBox()
+        self.video_fps_spin.setRange(1.0, 30.0)
+        self.video_fps_spin.setDecimals(1)
+        self.video_fps_spin.setValue(self.settings.video_fps)
+        form.addRow("Video FPS", self.video_fps_spin)
+
+        save_button = QPushButton("Save Settings")
+        save_button.clicked.connect(self.save_app_settings)
+        form.addRow(save_button)
+
+        dock.setWidget(widget)
+        self.addDockWidget(Qt.RightDockWidgetArea, dock)
+
+    def save_app_settings(self):
+        self.settings.device = self.device_entry.text().strip() or self.settings.device
+        self.settings.refresh_interval = self.refresh_spin.value()
+        self.settings.video_fps = self.video_fps_spin.value()
+        if self.layout_path:
+            self.settings.last_layout = str(self.layout_path)
+        save_settings(self.settings)
+        self.statusBar().showMessage("Settings saved", 3000)
 
     def populate_scene(self):
         self.scene.clear()

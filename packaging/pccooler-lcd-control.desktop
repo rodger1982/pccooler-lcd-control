@@ -1,9 +1,9 @@
 [Desktop Entry]
 Name=PCCOOLER-LCD Control
-Comment=Design and control PCCOOLER LCD dashboards
+Comment=Design, manage, and run PCCOOLER LCD dashboards
 Exec=pccooler-lcd-control
-Icon=applications-graphics
+Icon=video-display
 Terminal=false
 Type=Application
-Categories=Graphics;Settings;HardwareSettings;
+Categories=Settings;HardwareSettings;Graphics;
 StartupNotify=true

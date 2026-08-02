@@ -1,10 +1,10 @@
 pkgname=pccooler-lcd-control
-pkgver=2.0.0a17
+pkgver=3.0.0b1
 pkgrel=1
 provides=('pccooler-lcd')
 conflicts=('pccooler-lcd')
 replaces=('pccooler-lcd')
-pkgdesc="Linux support for PCCOOLER CP3 LCD"
+pkgdesc="Cross-platform control and layout designer for PCCOOLER CP3 LCD displays"
 arch=('any')
 license=('MIT')
 depends=('ffmpeg' 'python' 'python-pyserial' 'python-psutil' 'python-pillow' 'pyside6')
@@ -27,12 +27,10 @@ package() {
   cd "$startdir"
   python -m installer --destdir="$pkgdir" "dist/pccooler_lcd_control-${pkgver}-py3-none-any.whl"
   install -Dm644 packaging/99-pccooler-lcd.rules "$pkgdir/usr/lib/udev/rules.d/99-pccooler-lcd.rules"
-  install -Dm644 packaging/pccooler-lcd-user.service "$pkgdir/usr/lib/systemd/user/pccooler-lcd.service"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
-  install -Dm644 packaging/pccooler-lcd.desktop "$pkgdir/usr/share/applications/pccooler-lcd.desktop"
-  install -Dm644 packaging/pccooler-lcd-studio.desktop "$pkgdir/usr/share/applications/pccooler-lcd-studio.desktop"
   install -Dm644 packaging/pccooler-lcd-control.desktop "$pkgdir/usr/share/applications/pccooler-lcd-control.desktop"
+  install -Dm644 packaging/pccooler-lcd-control.service "$pkgdir/usr/lib/systemd/user/pccooler-lcd-control.service"
   install -d "$pkgdir/usr/share/pccooler-lcd/themes"
   cp -a themes/. "$pkgdir/usr/share/pccooler-lcd/themes/"
 }

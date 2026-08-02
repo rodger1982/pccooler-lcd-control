@@ -82,3 +82,10 @@ The primary command and desktop application are:
 ```text
 pccooler-lcd-control
 ```
+
+## Beta 2 build stabilization
+
+Beta 2 fixes Windows path resolution by invoking PyInstaller with absolute paths
+from `windows/build-windows.ps1`. It also replaces separate CI workflows with one
+cross-platform workflow. Tagged builds wait for both Windows and Arch artifacts
+before publishing a GitHub release.

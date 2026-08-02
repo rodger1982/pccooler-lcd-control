@@ -1,41 +1,33 @@
-# -*- mode: python ; coding: utf-8 -*-
+# Optional PyInstaller spec. The supported build path is windows/build-windows.ps1.
 from pathlib import Path
-import shutil
 
-project_root = Path(SPECPATH).parent.parent
-datas = [
-    (str(project_root / "themes"), "themes"),
-]
+project_root = Path.cwd()
+entry = project_root / "windows" / "windows_entry.py"
+app_path = project_root / "app"
+themes = project_root / "themes"
 
-binaries = []
-for executable in ("ffmpeg.exe", "ffprobe.exe"):
-    location = shutil.which(executable)
-    if location:
-        binaries.append((location, "."))
-
-hiddenimports = [
-    "pccooler_lcd.unified",
-    "pccooler_lcd.cli",
-    "pccooler_lcd.qt.app",
-    "pccooler_lcd.qt.main_window",
-    "pccooler_lcd.qt.canvas",
-]
+if not entry.is_file():
+    raise FileNotFoundError(f"Run PyInstaller from the repository root; missing {entry}")
 
 a = Analysis(
-    [str(project_root / "windows" / "windows_entry.py")],
-    pathex=[str(project_root / "app")],
-    binaries=binaries,
-    datas=datas,
-    hiddenimports=hiddenimports,
+    [str(entry)],
+    pathex=[str(app_path)],
+    binaries=[],
+    datas=[(str(themes), "themes")],
+    hiddenimports=[
+        "pccooler_lcd.unified",
+        "pccooler_lcd.cli",
+        "pccooler_lcd.qt.app",
+        "pccooler_lcd.qt.main_window",
+        "pccooler_lcd.qt.canvas",
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=["gi"],
     noarchive=False,
 )
-
 pyz = PYZ(a.pure)
-
 exe = EXE(
     pyz,
     a.scripts,
@@ -47,10 +39,8 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    disable_windowed_traceback=False,
 )
-
-collect = COLLECT(
+coll = COLLECT(
     exe,
     a.binaries,
     a.datas,

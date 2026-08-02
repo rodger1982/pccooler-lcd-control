@@ -8,6 +8,7 @@ import json
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .dashboard import Stats, collect_stats
+from .media import first_frame, MediaError
 
 
 @dataclass(slots=True)
@@ -127,9 +128,8 @@ def _background(layout: Layout, background_frame: Image.Image | None = None) -> 
         return method(background_frame.convert("RGB"), (320, 240), method=Image.Resampling.BILINEAR)
     if layout.background and Path(layout.background).expanduser().is_file():
         try:
-            image = Image.open(Path(layout.background).expanduser()).convert("RGB")
-            return ImageOps.fit(image, (320, 240), method=Image.Resampling.LANCZOS)
-        except OSError:
+            return first_frame(layout.background, size=(320, 240), fit=layout.background_fit)
+        except (OSError, MediaError):
             pass
     return Image.new("RGB", (320, 240), _rgb(layout.background_color, (7, 16, 26)))
 
@@ -456,8 +456,7 @@ def render_layout(layout: Layout, stats: Stats | None = None, background_frame: 
             candidate = Path(widget.label).expanduser()
             if candidate.is_file():
                 try:
-                    image = Image.open(candidate).convert("RGBA")
-                    image = ImageOps.fit(image, (widget.width-8, widget.height-8), method=Image.Resampling.LANCZOS)
+                    image = first_frame(candidate, size=(widget.width-8, widget.height-8), fit="cover").convert("RGBA")
                     overlay.alpha_composite(image, (widget.x+4, widget.y+4))
                 except OSError:
                     draw.text((x, y), "IMAGE ERROR", font=label_font, fill=accent)

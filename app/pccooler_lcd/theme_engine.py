@@ -5,19 +5,15 @@ import colorsys
 
 from PIL import Image, ImageOps
 
+from .media import first_frame
+
 
 def _load_sample(source) -> Image.Image:
     if isinstance(source, Image.Image):
         image = source.convert("RGB")
     else:
-        path = Path(source).expanduser()
-        image = Image.open(path)
-        try:
-            image.seek(0)
-        except EOFError:
-            pass
-        image = image.convert("RGB")
-    return ImageOps.fit(image, (96, 72), method=Image.Resampling.BILINEAR)
+        image = first_frame(source, size=(96, 72), fit="cover")
+    return image.convert("RGB")
 
 
 def _hex(rgb: tuple[int, int, int]) -> str:

@@ -89,3 +89,14 @@ Beta 2 fixes Windows path resolution by invoking PyInstaller with absolute paths
 from `windows/build-windows.ps1`. It also replaces separate CI workflows with one
 cross-platform workflow. Tagged builds wait for both Windows and Arch artifacts
 before publishing a GitHub release.
+
+
+## Beta 3 unified media engine
+
+- One media API for PNG, JPEG, WebP, GIF, MP4, MOV, WebM, MKV, and AVI.
+- FFmpeg video decoding on Linux and Windows.
+- Cached GIF frames and persistent FFmpeg video decoding.
+- Safe first-frame sampling for contrast-theme generation.
+- Images, GIFs, and videos can be layout backgrounds or image/media widgets.
+- The Qt preview uses the same media source as live dashboard playback.
+- `media-layout-dashboard` replaces format-specific background playback internally.

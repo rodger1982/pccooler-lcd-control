@@ -48,6 +48,7 @@ from ..layout import (
     save_layout,
 )
 from ..theme_engine import generate_contrast_theme
+from ..media import MediaSource, MediaError, detect_media_type
 from ..paths import ensure_tree
 from ..settings import load_settings, save_settings
 from ..platform import config_dir
@@ -112,10 +113,7 @@ class MainWindow(QMainWindow):
         self.startup_config_path = self.config_dir / "startup.json"
         self.dashboard_process: subprocess.Popen | None = None
         self.preview_path = Path(tempfile.gettempdir()) / "pccooler-qt-preview.png"
-        self.gif_preview_frames = []
-        self.gif_preview_durations = []
-        self.gif_preview_index = 0
-        self.gif_preview_elapsed = 0
+        self.media_source = None
 
         self.scene = DesignScene()
         self.view = DesignView(self.scene)
@@ -797,50 +795,38 @@ class MainWindow(QMainWindow):
         self.background_type.setCurrentIndex(
             3 if is_video else (2 if is_gif else 1)
         )
-        self.load_gif_preview(path if is_gif else None)
+        self.load_media_preview(path)
         self.generate_theme()
 
-    def load_gif_preview(self, path):
-        self.gif_preview_frames = []
-        self.gif_preview_durations = []
-        self.gif_preview_index = 0
-        self.gif_preview_elapsed = 0
-
+    def load_media_preview(self, path):
+        if self.media_source is not None:
+            self.media_source.close()
+            self.media_source = None
         if not path:
             return
-
         try:
-            gif = Image.open(path)
-            for frame in ImageSequence.Iterator(gif):
-                self.gif_preview_frames.append(frame.copy().convert("RGB"))
-                self.gif_preview_durations.append(
-                    max(
-                        50,
-                        int(
-                            frame.info.get(
-                                "duration",
-                                gif.info.get("duration", 100),
-                            )
-                        ),
-                    )
-                )
+            self.media_source = MediaSource(
+                path,
+                size=(320, 240),
+                fit=("cover", "contain")[self.background_fit.currentIndex()],
+                fps=self.settings.video_fps,
+            )
             self.statusBar().showMessage(
-                f"Loaded animated background: "
-                f"{len(self.gif_preview_frames)} frames",
-                4000,
+                f"Loaded {self.media_source.kind} background", 4000
             )
         except Exception as error:
-            self.gif_preview_frames = []
-            self.gif_preview_durations = []
-            QMessageBox.warning(
-                self,
-                "GIF background",
-                f"Could not load GIF: {error}",
-            )
+            QMessageBox.warning(self, "Background media", str(error))
+
+    def load_gif_preview(self, path):
+        # Compatibility alias for saved layouts from earlier releases.
+        self.load_media_preview(path)
 
     def sync_theme(self):
         self.layout_model.background = self.background_entry.text().strip()
-        self.layout_model.background_type = ("auto", "static", "gif", "video")[self.background_type.currentIndex()]
+        selected_type = ("auto", "static", "gif", "video")[self.background_type.currentIndex()]
+        if selected_type == "auto" and self.layout_model.background:
+            selected_type = detect_media_type(self.layout_model.background)
+        self.layout_model.background_type = selected_type
         self.layout_model.background_fit = ("cover", "contain")[self.background_fit.currentIndex()]
         self.layout_model.overlay_alpha = self.overlay_spin.value()
 
@@ -882,31 +868,21 @@ class MainWindow(QMainWindow):
 
     def update_preview(self):
         self.sync_theme()
-
         background_frame = None
-        if (
-            self.layout_model.background_type == "gif"
-            and self.gif_preview_frames
-        ):
-            self.gif_preview_elapsed += self.preview_timer.interval()
-            duration = self.gif_preview_durations[self.gif_preview_index]
-            if self.gif_preview_elapsed >= duration:
-                self.gif_preview_elapsed = 0
-                self.gif_preview_index = (
-                    self.gif_preview_index + 1
-                ) % len(self.gif_preview_frames)
-            background_frame = self.gif_preview_frames[
-                self.gif_preview_index
-            ]
-
-        image = render_layout(
-            self.layout_model,
-            collect_stats(),
-            background_frame=background_frame,
-        )
+        path = self.layout_model.background
+        if path:
+            try:
+                if self.media_source is None or self.media_source.path != Path(path).expanduser():
+                    self.load_media_preview(path)
+                if self.media_source is not None:
+                    background_frame = self.media_source.next_frame(
+                        self.preview_timer.interval() / 1000.0
+                    )
+            except Exception as error:
+                self.statusBar().showMessage(f"Media preview error: {error}", 5000)
+        image = render_layout(self.layout_model, collect_stats(), background_frame=background_frame)
         image.save(self.preview_path)
-        pixmap = QPixmap.fromImage(ImageQt(image))
-        self.preview_label.setPixmap(pixmap)
+        self.preview_label.setPixmap(QPixmap.fromImage(ImageQt(image)))
         return image
 
     def send_preview(self):
@@ -932,30 +908,14 @@ class MainWindow(QMainWindow):
             str(temp_layout),
             "--quiet",
         ]
-        if self.layout_model.background_type == "video":
+        if self.layout_model.background_type in {"gif", "video"}:
             command = [
-                "pccooler-lcd",
-                "video-layout-dashboard",
-                str(temp_layout),
-                "--fps",
-                "6",
-                "--palette-colors",
-                "96",
-                "--png-compression",
-                "1",
-            ]
-        elif self.layout_model.background_type == "gif":
-            command += [
-                "--optimized-gif",
-                "--gif-min-delay",
-                "0.05",
-                "--palette-colors",
-                "96",
-                "--png-compression",
-                "1",
+                "pccooler-lcd", "media-layout-dashboard", str(temp_layout),
+                "--media-fps", str(self.settings.video_fps),
+                "--png-compression", "1",
             ]
         else:
-            command += ["--interval", "1.0"]
+            command += ["--interval", str(self.settings.refresh_interval)]
 
         self.dashboard_process = subprocess.Popen(
             command,
@@ -1030,4 +990,6 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.stop_dashboard()
+        if self.media_source is not None:
+            self.media_source.close()
         super().closeEvent(event)

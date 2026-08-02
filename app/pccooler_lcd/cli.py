@@ -17,6 +17,7 @@ from .transport import CP3Connection, TransferError
 from .layout import load_layout, render_layout
 from .animation import prepare_gif, SmoothAnimationPlayer, EncodedFrame
 from .video import play_video, raw_video_frames, png_bytes as video_png_bytes
+from .media import MediaSource, detect_media_type
 from .platform import config_dir, default_device
 
 
@@ -501,6 +502,24 @@ def video_layout_dashboard_cmd(args):
         print("\nVideo layout stopped.")
     return 0
 
+def media_layout_dashboard_cmd(args):
+    layout = load_layout(args.layout)
+    if not layout.background:
+        return layout_dashboard_cmd(args)
+    with MediaSource(layout.background, size=(320, 240), fit=layout.background_fit, fps=args.media_fps) as media:
+        with CP3Connection(args.device, args.timeout, args.chunk_delay, args.verbose) as connection:
+            try:
+                while True:
+                    started=time.monotonic()
+                    background=media.next_frame(1.0/args.media_fps)
+                    image=render_layout(layout, collect_stats(), background_frame=background)
+                    payload=image_to_png_bytes(image, args.png_compression)
+                    connection.send_png(payload, retries=args.retries)
+                    time.sleep(max(0.0, 1.0/args.media_fps-(time.monotonic()-started)))
+            except KeyboardInterrupt:
+                print("\nMedia layout stopped.")
+    return 0
+
 def startup_dashboard_cmd(args):
     config_path = config_dir() / "startup.json"
     if not config_path.is_file():
@@ -527,24 +546,13 @@ def startup_dashboard_cmd(args):
         )
 
     layout_model = load_layout(layout_path)
-    if (
-        layout_model.background_type == "video"
-        or layout_model.background.lower().endswith(
-            (".mp4", ".m4v", ".mov", ".webm")
-        )
-    ):
+    if layout_model.background and detect_media_type(layout_model.background) in {"gif", "video"}:
         forwarded = argparse.Namespace(
-            layout=str(layout_path),
-            device=args.device,
-            timeout=args.timeout,
-            chunk_delay=args.chunk_delay,
-            verbose=args.verbose,
-            retries=args.retries,
-            fps=args.video_fps,
-            palette_colors=args.palette_colors,
-            png_compression=args.png_compression,
+            layout=str(layout_path), device=args.device, timeout=args.timeout,
+            chunk_delay=args.chunk_delay, verbose=args.verbose, retries=args.retries,
+            media_fps=args.video_fps, png_compression=args.png_compression,
         )
-        return video_layout_dashboard_cmd(forwarded)
+        return media_layout_dashboard_cmd(forwarded)
 
     forwarded = argparse.Namespace(
         layout=str(layout_path),
@@ -644,6 +652,13 @@ def main():
     command.add_argument("--optimized-gif", action="store_true")
     command.add_argument("--palette-colors", type=int, default=96)
     command.set_defaults(func=layout_dashboard_cmd)
+
+    command = sub.add_parser("media-layout-dashboard", help="Run a layout with any supported animated media background")
+    command.add_argument("layout")
+    add_transport_options(command)
+    command.add_argument("--media-fps", type=float, default=6.0)
+    command.add_argument("--png-compression", type=int, default=1)
+    command.set_defaults(func=media_layout_dashboard_cmd)
 
     command = sub.add_parser(
         "startup-dashboard",

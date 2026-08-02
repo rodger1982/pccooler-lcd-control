@@ -4,7 +4,7 @@ build-backend="setuptools.build_meta"
 
 [project]
 name="pccooler-lcd-control"
-version="3.0.0b2"
+version="3.0.0b3"
 description="Cross-platform control and layout designer for PCCOOLER CP3 LCD displays"
 requires-python=">=3.11"
 dependencies=["pyserial>=3.5","psutil>=5.9","Pillow>=10","PySide6>=6.7"]

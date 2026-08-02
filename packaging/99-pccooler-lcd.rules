@@ -1,0 +1,1 @@
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1d6b", ATTRS{idProduct}=="0112", GROUP="uucp", MODE="0660", TAG+="uaccess", SYMLINK+="pccooler-lcd"

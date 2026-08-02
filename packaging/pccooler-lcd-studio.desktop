@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=PCCOOLER-LCD Theme Studio
+Comment=Design themes, screens, and widgets for PCCOOLER LCD displays
+Exec=pccooler-lcd-studio
+Icon=applications-graphics
+Terminal=false
+Type=Application
+Categories=Graphics;Settings;HardwareSettings;
+StartupNotify=true

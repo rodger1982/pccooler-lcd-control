@@ -1,0 +1,13 @@
+[Unit]
+Description=PCCOOLER LCD live dashboard
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/pccooler-lcd startup-dashboard
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

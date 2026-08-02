@@ -1,0 +1,33 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r windows/requirements-windows.txt
+          pip install .
+      - name: Build standalone app
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name PCCOOLER-LCD-Control --collect-all PySide6 --collect-submodules pccooler_lcd windows/windows_entry.py
+      - name: Archive
+        shell: pwsh
+        run: Compress-Archive -Path dist/PCCOOLER-LCD-Control/* -DestinationPath PCCOOLER-LCD-Control-Windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PCCOOLER-LCD-Control-Windows-x64
+          path: PCCOOLER-LCD-Control-Windows-x64.zip

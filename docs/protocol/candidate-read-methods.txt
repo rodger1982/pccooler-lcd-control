@@ -1,0 +1,7 @@
+# Read-only candidate methods.
+# These are unconfirmed guesses and are dry-run unless --execute is used.
+GET info
+GET device
+GET status
+GET version
+GET config

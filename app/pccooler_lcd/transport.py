@@ -7,6 +7,7 @@ import serial
 
 from .device import resolve_device
 from .platform import default_device, is_windows
+from .protocol_lab import ProtocolRecorder
 from .protocol_cp3 import (
     announce_frame,
     complete_frame,
@@ -31,11 +32,13 @@ class CP3Connection:
         timeout: float = 4.0,
         chunk_delay: float = 0.002,
         verbose: bool = False,
+        recorder: ProtocolRecorder | None = None,
     ) -> None:
         self.device = device or default_device()
         self.timeout = timeout
         self.chunk_delay = chunk_delay
         self.verbose = verbose
+        self.recorder = recorder
         self.path: str | None = None
         self.port: serial.Serial | None = None
 
@@ -78,6 +81,12 @@ class CP3Connection:
         if not self.port:
             raise TransferError("Serial connection is not open")
         raw = read_frame(self.port, self.timeout)
+        if self.recorder is not None:
+            self.recorder.record(
+                "RX",
+                label,
+                raw,
+            )
         reply = parse_reply(raw)
         if self.verbose:
             print(f"{label} raw: {raw.hex() if raw else 'none'}")
@@ -105,6 +114,13 @@ class CP3Connection:
         date_ms = date_ms or int(time.time() * 1000)
         packet = make_request(method, sequence, date_ms, content)
         self.port.reset_input_buffer()
+        if self.recorder is not None:
+            self.recorder.record(
+                "TX",
+                method,
+                packet,
+                content=content,
+            )
         self.port.write(packet)
         self.port.flush()
         return self._reply(method)
@@ -197,14 +213,21 @@ class CP3Connection:
         date_ms = int(time.time() * 1000)
 
         self.port.reset_input_buffer()
-        self.port.write(
-            announce_frame(
-                sequence,
-                date_ms,
-                file_name,
-                len(payload),
-            )
+        announce = announce_frame(
+            sequence,
+            date_ms,
+            file_name,
+            len(payload),
         )
+        if self.recorder is not None:
+            self.recorder.record(
+                "TX",
+                "POST transport",
+                announce,
+                file_name=file_name,
+                file_size=len(payload),
+            )
+        self.port.write(announce)
         self.port.flush()
         announcement = self._reply("announce")
 
@@ -219,7 +242,17 @@ class CP3Connection:
             )
 
         for offset in range(0, len(payload), block_size):
-            self.port.write(payload[offset : offset + block_size])
+            block = payload[offset : offset + block_size]
+            if self.recorder is not None:
+                self.recorder.record(
+                    "TX-DATA",
+                    "file-block",
+                    block,
+                    offset=offset,
+                    size=len(block),
+                    file_name=file_name,
+                )
+            self.port.write(block)
             self.port.flush()
             if self.chunk_delay:
                 time.sleep(self.chunk_delay)
@@ -231,6 +264,13 @@ class CP3Connection:
             date_ms + 1,
             file_name,
         )
+        if self.recorder is not None:
+            self.recorder.record(
+                "TX",
+                "POST transported",
+                completion,
+                file_name=file_name,
+            )
         for completion_attempt in range(3):
             self.port.write(completion)
             self.port.flush()

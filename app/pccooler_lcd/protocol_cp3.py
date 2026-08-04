@@ -146,3 +146,34 @@ def describe_frame(raw: bytes) -> dict:
         "replace",
     )
     return description
+
+
+def decode_packet_text(raw: bytes) -> dict:
+    description = describe_frame(raw)
+    text = description.get("payload_text")
+    if not text:
+        return description
+
+    header_text, separator, body = text.partition("\r\n\r\n")
+    headers: dict[str, str] = {}
+    first_line = ""
+
+    for index, line in enumerate(header_text.split("\r\n")):
+        if index == 0:
+            first_line = line
+            continue
+        if "=" in line:
+            key, value = line.split("=", 1)
+            headers[key] = value
+
+    result = dict(description)
+    result["first_line"] = first_line
+    result["headers"] = headers
+    result["body_text"] = body if separator else ""
+
+    if body:
+        try:
+            result["body_json"] = json.loads(body)
+        except Exception:
+            pass
+    return result

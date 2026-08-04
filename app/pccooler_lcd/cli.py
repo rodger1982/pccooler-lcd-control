@@ -16,6 +16,7 @@ from .protocol_cp3 import (
     parse_png_dimensions,
     request_preview,
     describe_frame,
+    decode_packet_text,
 )
 from .transport import CP3Connection, TransferError
 from .layout import load_layout, render_layout
@@ -23,6 +24,11 @@ from .animation import prepare_gif, SmoothAnimationPlayer, EncodedFrame
 from .video import play_video, raw_video_frames, png_bytes as video_png_bytes
 from .media import MediaSource, detect_media_type
 from .platform import config_dir, default_device
+from .protocol_lab import (
+    ProtocolRecorder,
+    protocol_catalog,
+    load_trace,
+)
 from .native_media import (
     NativeMediaError,
     prepare_media,
@@ -592,11 +598,18 @@ def benchmark_transfer_cmd(args):
     sizes = []
     durations = []
 
+    recorder = (
+        ProtocolRecorder(args.session_trace)
+        if getattr(args, "session_trace", None)
+        else None
+    )
+
     with CP3Connection(
         args.device,
         args.timeout,
         args.chunk_delay,
         args.verbose,
+        recorder=recorder,
     ) as connection:
         for index in range(args.frames):
             image = Image.new(
@@ -821,6 +834,154 @@ def protocol_request_cmd(args):
         print(f"Reply saved to {reply_path}")
     return 0
 
+
+def protocol_catalog_cmd(_args):
+    print(json.dumps(protocol_catalog(), indent=2))
+    return 0
+
+
+def protocol_decode_cmd(args):
+    if args.hex:
+        raw = bytes.fromhex(args.hex)
+    else:
+        raw = Path(args.file).expanduser().read_bytes()
+
+    decoded = decode_packet_text(raw)
+    print(json.dumps(decoded, indent=2))
+    return 0
+
+
+def protocol_trace_show_cmd(args):
+    events = load_trace(args.trace)
+    if args.summary:
+        for event in events:
+            print(
+                f"{event.get('iso_time', '')} "
+                f"{event.get('direction', ''):7} "
+                f"{event.get('label', ''):20} "
+                f"{len(event.get('raw_hex', '')) // 2} bytes"
+            )
+    else:
+        print(json.dumps(events, indent=2))
+    return 0
+
+
+def protocol_replay_cmd(args):
+    events = load_trace(args.trace)
+    candidates = [
+        event for event in events
+        if event.get("direction") == "TX"
+        and event.get("label") not in {
+            "POST transport",
+            "POST transported",
+        }
+    ]
+    if not candidates:
+        raise SystemExit(
+            "No replayable non-file request was found in the trace."
+        )
+
+    index = args.index
+    if index < 0 or index >= len(candidates):
+        raise SystemExit(
+            f"Replay index must be between 0 and {len(candidates) - 1}"
+        )
+
+    event = candidates[index]
+    raw = bytes.fromhex(event["raw_hex"])
+    decoded = decode_packet_text(raw)
+
+    print(json.dumps(decoded, indent=2))
+    if not args.execute:
+        print("Dry run only. Add --execute to replay the packet.")
+        return 0
+
+    with CP3Connection(
+        args.device,
+        args.timeout,
+        args.chunk_delay,
+        args.verbose,
+        recorder=ProtocolRecorder(args.output_trace)
+        if args.output_trace
+        else None,
+    ) as connection:
+        if not connection.port:
+            raise SystemExit("Serial connection failed to open")
+        connection.port.reset_input_buffer()
+        connection.port.write(raw)
+        connection.port.flush()
+        reply = connection._reply(
+            f"replay:{event.get('label', 'packet')}"
+        )
+
+    print(
+        json.dumps(
+            {
+                "status": reply.status,
+                "ack_number": reply.ack_number,
+                "content": reply.content,
+                "raw_hex": reply.raw.hex(),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def protocol_probe_cmd(args):
+    methods = [
+        line.strip()
+        for line in Path(args.methods).expanduser().read_text(
+            encoding="utf-8"
+        ).splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if not methods:
+        raise SystemExit("No methods found in the methods file")
+
+    if not args.execute:
+        print("Probe plan:")
+        for method in methods:
+            print(f"  {method}")
+        print("Dry run only. Add --execute to send requests.")
+        return 0
+
+    recorder = (
+        ProtocolRecorder(args.trace)
+        if args.trace
+        else None
+    )
+
+    failures = 0
+    with CP3Connection(
+        args.device,
+        args.timeout,
+        args.chunk_delay,
+        args.verbose,
+        recorder=recorder,
+    ) as connection:
+        for method in methods:
+            try:
+                reply = connection.request(
+                    method,
+                    {},
+                )
+                failures = 0
+                print(
+                    f"{method}: status={reply.status} "
+                    f"content={reply.content}"
+                )
+            except Exception as error:
+                failures += 1
+                print(f"{method}: no valid reply ({error})")
+                if failures >= args.stop_after:
+                    print(
+                        f"Stopping after {failures} consecutive failures."
+                    )
+                    break
+            time.sleep(args.interval)
+    return 0
+
 def _fmt_temp(value):
     return "--°C" if value is None else f"{value:.0f}°C"
 
@@ -993,9 +1154,59 @@ def main():
     command.add_argument("--sequence", type=int)
     command.add_argument("--date-ms", type=int)
     command.add_argument("--trace")
+    command.add_argument(
+        "--session-trace",
+        help="Record actual TX/RX packets to JSON",
+    )
     command.add_argument("--execute", action="store_true")
     add_transport_options(command)
     command.set_defaults(func=protocol_request_cmd)
+
+    command = sub.add_parser(
+        "protocol-catalog",
+        help="Show confirmed and unknown CP3 protocol operations",
+    )
+    command.set_defaults(func=protocol_catalog_cmd)
+
+    command = sub.add_parser(
+        "protocol-decode",
+        help="Decode a CP3 packet from hex or a binary file",
+    )
+    source = command.add_mutually_exclusive_group(required=True)
+    source.add_argument("--hex")
+    source.add_argument("--file")
+    command.set_defaults(func=protocol_decode_cmd)
+
+    command = sub.add_parser(
+        "protocol-trace-show",
+        help="Display a saved protocol trace",
+    )
+    command.add_argument("trace")
+    command.add_argument("--summary", action="store_true")
+    command.set_defaults(func=protocol_trace_show_cmd)
+
+    command = sub.add_parser(
+        "protocol-replay",
+        help="Replay one non-file TX packet from a trace",
+    )
+    command.add_argument("trace")
+    command.add_argument("--index", type=int, default=0)
+    command.add_argument("--execute", action="store_true")
+    command.add_argument("--output-trace")
+    add_transport_options(command)
+    command.set_defaults(func=protocol_replay_cmd)
+
+    command = sub.add_parser(
+        "protocol-probe",
+        help="Rate-limited probing from a text file of candidate methods",
+    )
+    command.add_argument("methods")
+    command.add_argument("--execute", action="store_true")
+    command.add_argument("--interval", type=float, default=1.0)
+    command.add_argument("--stop-after", type=int, default=5)
+    command.add_argument("--trace")
+    add_transport_options(command)
+    command.set_defaults(func=protocol_probe_cmd)
 
     command = sub.add_parser(
         "startup-dashboard",

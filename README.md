@@ -1,54 +1,40 @@
-# PCCOOLER-LCD Control 3.0.0 Beta 4
+# PCCOOLER-LCD Control 3.0.0 Beta 5
 
-Beta 4 focuses on smoother, more consistent GIF playback.
+Beta 5 fixes the layout media-validation and popup-loop regression.
 
-## New GIF defaults
+Only the layout's top-level wallpaper is validated. Widget background colors,
+such as `#060608`, are treated strictly as colors.
 
-```fish
-pccooler-lcd-control play-gif animation.gif
-```
+If media is missing or cannot be decoded:
 
-The defaults now use:
+- the layout still opens,
+- the app stays usable,
+- a single status-bar warning is shown,
+- the fallback background color is rendered,
+- the user can browse to a replacement and save the layout.
 
-```text
-32 palette colors
-1-frame queue
-0 PNG compression
-100 ms minimum delay
-1.5% visual-difference threshold
-```
-
-More aggressive frame merging:
+## Update GitHub
 
 ```fish
-pccooler-lcd-control play-gif animation.gif   --difference-threshold 0.03   --minimum-frame-duration 0.08
-```
+cd ~/coding-projects/pccooler-project
 
-More color quality:
+rsync -av --delete \
+  --exclude='.git' \
+  --exclude='.venv' \
+  --exclude='.venv-win' \
+  --exclude='build' \
+  --exclude='dist' \
+  pccooler-lcd-control-3.0.0-beta5/ \
+  pccooler-lcd-control/
 
-```fish
-pccooler-lcd-control play-gif animation.gif --palette-colors 64
-```
-
-## Upload to GitHub
-
-Copy this release into the existing repository while preserving `.git`, then:
-
-```fish
+cd pccooler-lcd-control
 git add .
-git commit -m "Improve GIF playback performance"
+git commit -m "Fix layout media validation and popup loop"
 git push origin main
 ```
 
-## Arch Linux
+## Install on Arch Linux
 
 ```fish
 makepkg -Csi
-```
-
-## Windows
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\windowsuild-windows.ps1
 ```

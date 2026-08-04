@@ -48,7 +48,12 @@ from ..layout import (
     save_layout,
 )
 from ..theme_engine import generate_contrast_theme
-from ..media import MediaSource, MediaError, detect_media_type
+from ..media import (
+    MediaSource,
+    MediaError,
+    detect_media_type,
+    validate_media_path,
+)
 from ..paths import ensure_tree
 from ..settings import load_settings, save_settings
 from ..platform import config_dir
@@ -114,6 +119,8 @@ class MainWindow(QMainWindow):
         self.dashboard_process: subprocess.Popen | None = None
         self.preview_path = Path(tempfile.gettempdir()) / "pccooler-qt-preview.png"
         self.media_source = None
+        self.failed_media_paths: set[Path] = set()
+        self.last_media_warning = ""
 
         self.scene = DesignScene()
         self.view = DesignView(self.scene)
@@ -305,10 +312,9 @@ class MainWindow(QMainWindow):
         self.overlay_spin.setValue(
             self.layout_model.overlay_alpha
         )
-        self.load_gif_preview(
-            self.layout_model.background
-            if self.layout_model.background_type == "gif"
-            else None
+        self.load_media_preview(
+            self.layout_model.background,
+            notify=True,
         )
         self.populate_scene()
         self.statusBar().showMessage(
@@ -489,10 +495,9 @@ class MainWindow(QMainWindow):
         self.overlay_spin.setValue(
             self.layout_model.overlay_alpha
         )
-        self.load_gif_preview(
-            self.layout_model.background
-            if self.layout_model.background_type == "gif"
-            else None
+        self.load_media_preview(
+            self.layout_model.background,
+            notify=True,
         )
         self.populate_scene()
         self.statusBar().showMessage(
@@ -795,27 +800,57 @@ class MainWindow(QMainWindow):
         self.background_type.setCurrentIndex(
             3 if is_video else (2 if is_gif else 1)
         )
-        self.load_media_preview(path)
-        self.generate_theme()
+        if self.load_media_preview(path):
+            self.generate_theme()
 
-    def load_media_preview(self, path):
+    def load_media_preview(self, path, *, notify=True):
         if self.media_source is not None:
             self.media_source.close()
             self.media_source = None
-        if not path:
-            return
+
+        resolved, error = validate_media_path(path)
+        if resolved is None and error is None:
+            return False
+
+        if error:
+            if resolved is not None:
+                self.failed_media_paths.add(resolved)
+            self.last_media_warning = error
+            if notify:
+                self.statusBar().showMessage(
+                    f"{error} — using layout fallback background",
+                    10000,
+                )
+            return False
+
+        assert resolved is not None
         try:
             self.media_source = MediaSource(
-                path,
+                resolved,
                 size=(320, 240),
-                fit=("cover", "contain")[self.background_fit.currentIndex()],
+                fit=("cover", "contain")[
+                    self.background_fit.currentIndex()
+                ],
                 fps=self.settings.video_fps,
             )
-            self.statusBar().showMessage(
-                f"Loaded {self.media_source.kind} background", 4000
-            )
         except Exception as error:
-            QMessageBox.warning(self, "Background media", str(error))
+            self.failed_media_paths.add(resolved)
+            self.last_media_warning = str(error)
+            if notify:
+                self.statusBar().showMessage(
+                    f"Could not load media: {error} — using fallback",
+                    10000,
+                )
+            return False
+
+        self.failed_media_paths.discard(resolved)
+        self.last_media_warning = ""
+        if notify:
+            self.statusBar().showMessage(
+                f"Loaded {self.media_source.kind} background",
+                4000,
+            )
+        return True
 
     def load_gif_preview(self, path):
         # Compatibility alias for saved layouts from earlier releases.
@@ -834,12 +869,18 @@ class MainWindow(QMainWindow):
         self.sync_theme()
         path = Path(self.layout_model.background).expanduser()
         if not path.is_file():
-            QMessageBox.warning(self, "Theme", "Choose a valid wallpaper or GIF first.")
+            self.statusBar().showMessage(
+                "Choose a valid wallpaper, GIF, or video first.",
+                7000,
+            )
             return
         try:
             palette = generate_contrast_theme(path)
         except Exception as error:
-            QMessageBox.critical(self, "Theme", str(error))
+            self.statusBar().showMessage(
+                f"Theme analysis failed: {error}",
+                10000,
+            )
             return
         self.overlay_spin.setValue(int(palette["overlay_alpha"]))
         for widget in self.layout_model.widgets:
@@ -869,20 +910,50 @@ class MainWindow(QMainWindow):
     def update_preview(self):
         self.sync_theme()
         background_frame = None
-        path = self.layout_model.background
-        if path:
+        resolved, validation_error = validate_media_path(
+            self.layout_model.background
+        )
+
+        if validation_error:
+            if (
+                resolved is not None
+                and resolved not in self.failed_media_paths
+            ):
+                self.load_media_preview(resolved, notify=True)
+        elif resolved is not None:
             try:
-                if self.media_source is None or self.media_source.path != Path(path).expanduser():
-                    self.load_media_preview(path)
+                if (
+                    self.media_source is None
+                    or self.media_source.path != resolved
+                ):
+                    self.load_media_preview(resolved, notify=False)
                 if self.media_source is not None:
                     background_frame = self.media_source.next_frame(
                         self.preview_timer.interval() / 1000.0
                     )
             except Exception as error:
-                self.statusBar().showMessage(f"Media preview error: {error}", 5000)
-        image = render_layout(self.layout_model, collect_stats(), background_frame=background_frame)
+                self.failed_media_paths.add(resolved)
+                self.last_media_warning = str(error)
+                if self.media_source is not None:
+                    self.media_source.close()
+                    self.media_source = None
+                self.statusBar().showMessage(
+                    f"Media preview stopped: {error} — using fallback",
+                    10000,
+                )
+        elif self.media_source is not None:
+            self.media_source.close()
+            self.media_source = None
+
+        image = render_layout(
+            self.layout_model,
+            collect_stats(),
+            background_frame=background_frame,
+        )
         image.save(self.preview_path)
-        self.preview_label.setPixmap(QPixmap.fromImage(ImageQt(image)))
+        self.preview_label.setPixmap(
+            QPixmap.fromImage(ImageQt(image))
+        )
         return image
 
     def send_preview(self):
@@ -947,10 +1018,9 @@ class MainWindow(QMainWindow):
         self.background_type.setCurrentIndex({"auto": 0, "static": 1, "gif": 2, "video": 3}.get(self.layout_model.background_type, 0))
         self.background_fit.setCurrentIndex(1 if self.layout_model.background_fit == "contain" else 0)
         self.overlay_spin.setValue(self.layout_model.overlay_alpha)
-        self.load_gif_preview(
-            self.layout_model.background
-            if self.layout_model.background_type == "gif"
-            else None
+        self.load_media_preview(
+            self.layout_model.background,
+            notify=True,
         )
         self.populate_scene()
 

@@ -1,13 +1,15 @@
 # Changelog
 
-## 3.0.0 Beta 4
+## 3.0.0 Beta 5
 
-- Added perceptual GIF frame-difference detection.
-- Merges visually similar frames instead of uploading each one.
-- Changed GIF defaults to 32 colors, zero PNG compression, one queued frame,
-  and a 100 ms minimum frame delay.
-- Added `--difference-threshold` and `--minimum-frame-duration`.
-- Added tests for frame-difference scoring.
+### Fixed
+- Widget panel colors are never treated as media filenames.
+- Missing media no longer opens repeating modal dialogs.
+- Failed media paths are remembered instead of retried every 100 ms.
+- Layouts remain editable using their fallback background color.
+- Static images, GIFs, and videos share the same validation path.
+- Image-widget media errors no longer crash rendering.
 
-The display still receives full 320×240 images, so native high-frame-rate
-animation remains limited by the CP3 transfer protocol.
+### Changed
+- Missing-media warnings are shown once in the status bar.
+- Theme-analysis failures are non-blocking.

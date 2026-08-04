@@ -458,7 +458,7 @@ def render_layout(layout: Layout, stats: Stats | None = None, background_frame: 
                 try:
                     image = first_frame(candidate, size=(widget.width-8, widget.height-8), fit="cover").convert("RGBA")
                     overlay.alpha_composite(image, (widget.x+4, widget.y+4))
-                except OSError:
+                except (OSError, MediaError):
                     draw.text((x, y), "IMAGE ERROR", font=label_font, fill=accent)
             else:
                 _draw_wrapped(draw, (x, y), "SET IMAGE PATH", widget.width - 16, widget.height - 16, max(9, widget.font_size - 5), accent, True)

@@ -28,6 +28,46 @@ def detect_media_type(path: str | Path) -> str:
     raise MediaError(f"Unsupported media format: {suffix or 'no extension'}")
 
 
+
+def is_color_value(value: str | Path | None) -> bool:
+    """Return True for CSS-style #RRGGBB color values."""
+    if value is None:
+        return False
+    text = str(value).strip()
+    if len(text) != 7 or not text.startswith("#"):
+        return False
+    try:
+        int(text[1:], 16)
+    except ValueError:
+        return False
+    return True
+
+
+def resolve_media_path(value: str | Path | None) -> Path | None:
+    """Resolve an explicit top-level media value, ignoring blanks and colors."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or is_color_value(text):
+        return None
+    return Path(text).expanduser()
+
+
+def validate_media_path(
+    value: str | Path | None,
+) -> tuple[Path | None, str | None]:
+    path = resolve_media_path(value)
+    if path is None:
+        return None, None
+    if not path.is_file():
+        return path, f"Media file not found: {path}"
+    try:
+        detect_media_type(path)
+    except MediaError as error:
+        return path, str(error)
+    return path, None
+
+
 def _fit(image: Image.Image, size: tuple[int, int], fit: str) -> Image.Image:
     image = image.convert("RGB")
     if fit == "contain":
@@ -79,7 +119,10 @@ class MediaFrame:
 
 class MediaSource:
     def __init__(self, path: str | Path, *, size=(320, 240), fit="cover", fps=8.0, cache=True):
-        self.path = Path(path).expanduser()
+        resolved = resolve_media_path(path)
+        if resolved is None:
+            raise MediaError("No media file selected")
+        self.path = resolved
         if not self.path.is_file():
             raise MediaError(f"Media file not found: {self.path}")
         self.kind = detect_media_type(self.path)

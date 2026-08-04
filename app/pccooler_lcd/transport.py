@@ -91,61 +91,60 @@ class CP3Connection:
             )
         return reply
 
+    def request(
+        self,
+        method: str,
+        content: dict,
+        *,
+        sequence: int | None = None,
+        date_ms: int | None = None,
+    ):
+        if not self.port:
+            raise TransferError("Serial connection is not open")
+        sequence = sequence or random.randint(100, 60000)
+        date_ms = date_ms or int(time.time() * 1000)
+        packet = make_request(method, sequence, date_ms, content)
+        self.port.reset_input_buffer()
+        self.port.write(packet)
+        self.port.flush()
+        return self._reply(method)
 
-def request(
-    self,
-    method: str,
-    content: dict,
-    *,
-    sequence: int | None = None,
-    date_ms: int | None = None,
-):
-    if not self.port:
-        raise TransferError("Serial connection is not open")
-    sequence = sequence or random.randint(100, 60000)
-    date_ms = date_ms or int(time.time() * 1000)
-    packet = make_request(method, sequence, date_ms, content)
-    self.port.reset_input_buffer()
-    self.port.write(packet)
-    self.port.flush()
-    return self._reply(method)
+    def send_file(
+        self,
+        payload: bytes,
+        remote_name: str,
+        retries: int = 2,
+    ) -> None:
+        if not payload:
+            raise ValueError("Cannot upload an empty file")
+        if not remote_name or "/" in remote_name or "\\" in remote_name:
+            raise ValueError("remote_name must be a simple filename")
 
-def send_file(
-    self,
-    payload: bytes,
-    remote_name: str,
-    retries: int = 2,
-) -> None:
-    if not payload:
-        raise ValueError("Cannot upload an empty file")
-    if not remote_name or "/" in remote_name or "\\" in remote_name:
-        raise ValueError("remote_name must be a simple filename")
+        last_error: Exception | None = None
+        for attempt in range(retries + 1):
+            try:
+                self.open()
+                self._send_once(payload, remote_name)
+                return
+            except (
+                TransferError,
+                serial.SerialException,
+                OSError,
+            ) as error:
+                last_error = error
+                if attempt >= retries:
+                    break
+                delay = 0.30 * (attempt + 1)
+                print(
+                    f"File-transfer attempt {attempt + 1} failed: "
+                    f"{error}; reconnecting in {delay:.2f}s..."
+                )
+                self.reconnect(delay)
 
-    last_error: Exception | None = None
-    for attempt in range(retries + 1):
-        try:
-            self.open()
-            self._send_once(payload, remote_name)
-            return
-        except (
-            TransferError,
-            serial.SerialException,
-            OSError,
-        ) as error:
-            last_error = error
-            if attempt >= retries:
-                break
-            delay = 0.30 * (attempt + 1)
-            print(
-                f"File-transfer attempt {attempt + 1} failed: "
-                f"{error}; reconnecting in {delay:.2f}s..."
-            )
-            self.reconnect(delay)
-
-    raise TransferError(
-        f"File transfer failed after {retries + 1} attempts: "
-        f"{last_error}"
-    )
+        raise TransferError(
+            f"File transfer failed after {retries + 1} attempts: "
+            f"{last_error}"
+        )
 
     def send_png(
         self,
@@ -155,7 +154,9 @@ def send_file(
     ) -> None:
         width, height = parse_png_dimensions(image)
         if (width, height) != (320, 240):
-            raise ValueError(f"Expected a 320x240 PNG, got {width}x{height}")
+            raise ValueError(
+                f"Expected a 320x240 PNG, got {width}x{height}"
+            )
 
         last_error: Exception | None = None
         for attempt in range(retries + 1):
@@ -173,16 +174,21 @@ def send_file(
                     break
                 delay = 0.30 * (attempt + 1)
                 print(
-                    f"Transfer attempt {attempt + 1} failed: {error}; "
-                    f"reconnecting in {delay:.2f}s..."
+                    f"Transfer attempt {attempt + 1} failed: "
+                    f"{error}; reconnecting in {delay:.2f}s..."
                 )
                 self.reconnect(delay)
 
         raise TransferError(
-            f"Image transfer failed after {retries + 1} attempts: {last_error}"
+            f"Image transfer failed after {retries + 1} attempts: "
+            f"{last_error}"
         )
 
-    def _send_once(self, image: bytes, remote_name: str | None) -> None:
+    def _send_once(
+        self,
+        payload: bytes,
+        remote_name: str | None,
+    ) -> None:
         if not self.port:
             raise TransferError("Serial connection is not open")
 
@@ -192,27 +198,38 @@ def send_file(
 
         self.port.reset_input_buffer()
         self.port.write(
-            announce_frame(sequence, date_ms, file_name, len(image))
+            announce_frame(
+                sequence,
+                date_ms,
+                file_name,
+                len(payload),
+            )
         )
         self.port.flush()
         announcement = self._reply("announce")
 
         block_size = 1000
-        if announcement.content and announcement.content.get("blockMaxSize"):
+        if (
+            announcement.content
+            and announcement.content.get("blockMaxSize")
+        ):
             block_size = min(
-                1000, int(announcement.content["blockMaxSize"])
+                1000,
+                int(announcement.content["blockMaxSize"]),
             )
 
-        for offset in range(0, len(image), block_size):
-            self.port.write(image[offset : offset + block_size])
+        for offset in range(0, len(payload), block_size):
+            self.port.write(payload[offset : offset + block_size])
             self.port.flush()
             if self.chunk_delay:
                 time.sleep(self.chunk_delay)
 
-        self._reply("image")
+        self._reply("file-data")
 
         completion = complete_frame(
-            sequence + 1, date_ms + 1, file_name
+            sequence + 1,
+            date_ms + 1,
+            file_name,
         )
         for completion_attempt in range(3):
             self.port.write(completion)
@@ -224,6 +241,8 @@ def send_file(
                 if completion_attempt >= 2:
                     raise
                 if self.verbose:
-                    print("Final ACK missing; retrying completion frame...")
+                    print(
+                        "Final ACK missing; retrying completion frame..."
+                    )
                 time.sleep(0.15 * (completion_attempt + 1))
                 self.port.reset_input_buffer()

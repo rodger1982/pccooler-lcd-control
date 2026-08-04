@@ -1,15 +1,15 @@
 # Changelog
 
-## 3.0.0 Beta 5
+## 3.0.0 Beta 7
 
-### Fixed
-- Widget panel colors are never treated as media filenames.
-- Missing media no longer opens repeating modal dialogs.
-- Failed media paths are remembered instead of retried every 100 ms.
-- Layouts remain editable using their fallback background color.
-- Static images, GIFs, and videos share the same validation path.
-- Image-widget media errors no longer crash rendering.
+### Added
+- New project logo and GitHub banner.
+- Linux desktop icons in standard sizes.
+- Windows executable and installer icon.
+- Branded splash screen.
+- About dialog.
+- Branded README.
 
 ### Changed
-- Missing-media warnings are shown once in the status bar.
-- Theme-analysis failures are non-blocking.
+- Linux desktop launcher uses the new icon.
+- Windows builds include the branding assets.

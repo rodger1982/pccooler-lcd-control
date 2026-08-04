@@ -21,6 +21,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupLogging=yes
+SetupIconFile=..\assets\icons\pccooler-lcd-control.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

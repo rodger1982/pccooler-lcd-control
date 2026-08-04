@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from dataclasses import asdict
 import json
+import sys
 import subprocess
 import tempfile
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QStandardPaths
 from PySide6.QtGui import QAction, QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -60,6 +61,19 @@ from ..platform import config_dir
 from .canvas import DesignScene, DesignView, WidgetGraphicsItem
 
 
+
+def branding_path(filename: str) -> Path:
+    candidates = [
+        Path(__file__).resolve().parents[3] / "assets" / "branding" / filename,
+        Path(sys.prefix) / "share" / "pccooler-lcd-control" / "branding" / filename,
+        Path("/usr/share/pccooler-lcd-control/branding") / filename,
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
+
+
 DARK_STYLE = """
 QMainWindow, QWidget {
     background: #171A1F;
@@ -101,6 +115,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("PCCOOLER-LCD Control 3")
+        icon_path = branding_path("logo.png")
+        if icon_path.is_file():
+            self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(1280, 780)
         self.setStyleSheet(DARK_STYLE)
 
@@ -134,12 +151,13 @@ class MainWindow(QMainWindow):
         self.build_theme_dock()
         self.build_preview_dock()
         self.build_settings_dock()
-        self.populate_scene()
-        self.load_startup_layout()
 
         self.preview_timer = QTimer(self)
         self.preview_timer.timeout.connect(self.update_preview)
         self.preview_timer.start(100)
+
+        self.populate_scene()
+        self.load_startup_layout()
         self.statusBar().showMessage("Ready")
 
     def build_toolbar(self):
@@ -157,6 +175,7 @@ class MainWindow(QMainWindow):
             ("Send", self.send_preview),
             ("Start", self.start_dashboard),
             ("Stop", self.stop_dashboard),
+            ("About", self.show_about_dialog),
         ]
         for text, callback in actions:
             action = QAction(text, self)
@@ -302,6 +321,7 @@ class MainWindow(QMainWindow):
                 "auto": 0,
                 "static": 1,
                 "gif": 2,
+                "video": 3,
             }.get(self.layout_model.background_type, 0)
         )
         self.background_fit.setCurrentIndex(
@@ -485,6 +505,7 @@ class MainWindow(QMainWindow):
                 "auto": 0,
                 "static": 1,
                 "gif": 2,
+                "video": 3,
             }.get(self.layout_model.background_type, 0)
         )
         self.background_fit.setCurrentIndex(
@@ -785,15 +806,28 @@ class MainWindow(QMainWindow):
         self.update_preview()
 
     def choose_background(self):
+        pictures = QStandardPaths.writableLocation(
+            QStandardPaths.PicturesLocation
+        )
+        start_folder = pictures or str(Path.home())
+
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Choose Wallpaper",
-            str(Path.home()),
-            "Media (*.png *.jpg *.jpeg *.webp *.gif *.mp4 *.m4v *.mov *.webm)",
+            start_folder,
+            (
+                "Media (*.png *.jpg *.jpeg *.bmp *.webp "
+                "*.gif *.mp4 *.m4v *.mov *.webm *.mkv *.avi);;"
+                "Images (*.png *.jpg *.jpeg *.bmp *.webp);;"
+                "Animated GIF (*.gif);;"
+                "Video (*.mp4 *.m4v *.mov *.webm *.mkv *.avi);;"
+                "All files (*)"
+            ),
         )
         if not path:
             return
         self.background_entry.setText(path)
+        self.failed_media_paths.discard(Path(path).expanduser())
         lower = path.lower()
         is_gif = lower.endswith(".gif")
         is_video = lower.endswith((".mp4", ".m4v", ".mov", ".webm"))
@@ -928,8 +962,12 @@ class MainWindow(QMainWindow):
                 ):
                     self.load_media_preview(resolved, notify=False)
                 if self.media_source is not None:
+                    elapsed = max(
+                        0.001,
+                        self.preview_timer.interval() / 1000.0,
+                    )
                     background_frame = self.media_source.next_frame(
-                        self.preview_timer.interval() / 1000.0
+                        elapsed
                     )
             except Exception as error:
                 self.failed_media_paths.add(resolved)
@@ -1057,6 +1095,27 @@ class MainWindow(QMainWindow):
             f"Saved {self.layout_path}",
             3000,
         )
+
+
+    def show_about_dialog(self):
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("About PCCOOLER-LCD Control")
+        dialog.setText(
+            "<h2>PCCOOLER-LCD Control</h2>"
+            "<p>Cross-platform dashboard, theme studio, and layout designer "
+            "for PCCOOLER CP3 LCD displays.</p>"
+            "<p><b>Version 3.0.0 Beta 7</b></p>"
+            "<p>This independent community project is not affiliated with "
+            "or endorsed by PCCOOLER.</p>"
+        )
+        logo_path = branding_path("logo.png")
+        if logo_path.is_file():
+            dialog.setIconPixmap(
+                QPixmap(str(logo_path)).scaled(
+                    180, 180, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )
+            )
+        dialog.exec()
 
     def closeEvent(self, event):
         self.stop_dashboard()

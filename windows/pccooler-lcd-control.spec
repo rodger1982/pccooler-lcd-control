@@ -39,6 +39,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
+    icon=str(project_root / "assets" / "icons" / "pccooler-lcd-control.ico"),
 )
 coll = COLLECT(
     exe,

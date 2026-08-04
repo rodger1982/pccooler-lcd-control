@@ -1,5 +1,5 @@
 pkgname=pccooler-lcd-control
-pkgver=3.0.0b5
+pkgver=3.0.0b7
 pkgrel=1
 provides=('pccooler-lcd')
 conflicts=('pccooler-lcd')
@@ -29,6 +29,13 @@ package() {
   install -Dm644 packaging/99-pccooler-lcd.rules "$pkgdir/usr/lib/udev/rules.d/99-pccooler-lcd.rules"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+
+  install -Dm644 assets/branding/logo.png "$pkgdir/usr/share/pccooler-lcd-control/branding/logo.png"
+  install -Dm644 assets/branding/splash.png "$pkgdir/usr/share/pccooler-lcd-control/branding/splash.png"
+  install -Dm644 assets/branding/github-banner.png "$pkgdir/usr/share/doc/$pkgname/github-banner.png"
+  for size in 16 32 48 64 128 256 512; do
+    install -Dm644 "assets/icons/pccooler-lcd-control-${size}.png"       "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/pccooler-lcd-control.png"
+  done
   install -Dm644 packaging/pccooler-lcd-control.desktop "$pkgdir/usr/share/applications/pccooler-lcd-control.desktop"
   install -Dm644 packaging/pccooler-lcd-control.service "$pkgdir/usr/lib/systemd/user/pccooler-lcd-control.service"
   install -d "$pkgdir/usr/share/pccooler-lcd/themes"

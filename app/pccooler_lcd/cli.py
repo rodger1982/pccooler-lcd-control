@@ -228,13 +228,15 @@ def play_gif_cmd(args):
         palette_colors=args.palette_colors,
         compression=args.png_compression,
         max_frames=args.max_frames,
+        difference_threshold=args.difference_threshold,
+        minimum_frame_duration=args.minimum_frame_duration,
     )
 
     total_bytes = sum(len(frame.payload) for frame in frames)
     average_bytes = int(total_bytes / max(1, len(frames)))
     print(
         f"Prepared {len(frames)}/{preparation.source_frames} frames; "
-        f"removed {preparation.duplicate_frames_removed} duplicates; "
+        f"merged {preparation.duplicate_frames_removed} similar frames; "
         f"average frame {average_bytes / 1024:.1f} KiB"
     )
     print(
@@ -634,11 +636,13 @@ def main():
     command.add_argument("--fit", choices=("cover", "contain"), default="cover")
     command.add_argument("--frame-delay", type=float)
     command.add_argument("--min-delay", type=float, default=0.06)
-    command.add_argument("--png-compression", type=int, default=2)
-    command.add_argument("--palette-colors", type=int, default=128)
-    command.add_argument("--queue-depth", type=int, default=2)
+    command.add_argument("--png-compression", type=int, default=0)
+    command.add_argument("--palette-colors", type=int, default=32)
+    command.add_argument("--queue-depth", type=int, default=1)
     command.add_argument("--max-frames", type=int, default=0)
     command.add_argument("--no-frame-skip", action="store_true")
+    command.add_argument("--difference-threshold", type=float, default=0.015)
+    command.add_argument("--minimum-frame-duration", type=float, default=0.0)
     command.set_defaults(func=play_gif_cmd)
 
     command = sub.add_parser("layout-dashboard")
@@ -678,11 +682,13 @@ def main():
     command.add_argument("--fit", choices=("cover", "contain"), default="cover")
     command.add_argument("--frame-delay", type=float)
     command.add_argument("--min-delay", type=float, default=0.06)
-    command.add_argument("--png-compression", type=int, default=2)
-    command.add_argument("--palette-colors", type=int, default=128)
-    command.add_argument("--queue-depth", type=int, default=2)
+    command.add_argument("--png-compression", type=int, default=0)
+    command.add_argument("--palette-colors", type=int, default=32)
+    command.add_argument("--queue-depth", type=int, default=1)
     command.add_argument("--max-frames", type=int, default=0)
     command.add_argument("--no-frame-skip", action="store_true")
+    command.add_argument("--difference-threshold", type=float, default=0.015)
+    command.add_argument("--minimum-frame-duration", type=float, default=0.0)
     command.set_defaults(
         func=lambda args: play_gif_cmd(
             argparse.Namespace(**{**vars(args), "loops": 0})

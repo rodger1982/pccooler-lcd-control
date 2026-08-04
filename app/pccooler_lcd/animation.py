@@ -93,6 +93,25 @@ def _encode_png_candidates(
     return min(candidates, key=len)
 
 
+
+def _difference_score(
+    current: Image.Image,
+    previous: Image.Image,
+    sample_size: tuple[int, int] = (40, 30),
+) -> float:
+    """Return normalized average RGB difference between two frames."""
+    current_bytes = current.resize(
+        sample_size,
+        Image.Resampling.BILINEAR,
+    ).convert("RGB").tobytes()
+    previous_bytes = previous.resize(
+        sample_size,
+        Image.Resampling.BILINEAR,
+    ).convert("RGB").tobytes()
+    total = sum(abs(a - b) for a, b in zip(current_bytes, previous_bytes))
+    return total / (len(current_bytes) * 255.0)
+
+
 def prepare_gif(
     path: str | Path,
     *,
@@ -101,6 +120,8 @@ def prepare_gif(
     palette_colors: int = 128,
     compression: int = 2,
     max_frames: int = 0,
+    difference_threshold: float = 0.015,
+    minimum_frame_duration: float = 0.0,
 ) -> tuple[list[EncodedFrame], AnimationStats]:
     gif = Image.open(Path(path))
     count = getattr(gif, "n_frames", 1)
@@ -110,26 +131,50 @@ def prepare_gif(
     stats = AnimationStats(source_frames=count)
     prepared: list[EncodedFrame] = []
     previous_digest: str | None = None
+    previous_fitted: Image.Image | None = None
 
     for index, source in enumerate(ImageSequence.Iterator(gif)):
         if max_frames and index >= max_frames:
             break
 
         fitted = fit_frame(source.copy(), fit)
+        duration = max(
+            minimum_delay,
+            source.info.get(
+                "duration",
+                gif.info.get("duration", 100),
+            ) / 1000.0,
+        )
+
+        if (
+            previous_fitted is not None
+            and difference_threshold > 0
+            and _difference_score(fitted, previous_fitted)
+            < difference_threshold
+        ):
+            if prepared:
+                prepared[-1].duration += duration
+            stats.duplicate_frames_removed += 1
+            continue
+
+        if minimum_frame_duration > 0 and duration < minimum_frame_duration:
+            if prepared:
+                prepared[-1].duration += duration
+            stats.frames_skipped += 1
+            previous_fitted = fitted
+            continue
+
         payload = _encode_png_candidates(
             fitted,
             palette_colors=palette_colors,
             compression=compression,
         )
         digest = hashlib.sha1(payload).hexdigest()
-        duration = max(
-            minimum_delay,
-            source.info.get("duration", gif.info.get("duration", 100)) / 1000.0,
-        )
 
         if digest == previous_digest and prepared:
             prepared[-1].duration += duration
             stats.duplicate_frames_removed += 1
+            previous_fitted = fitted
             continue
 
         prepared.append(
@@ -141,6 +186,7 @@ def prepare_gif(
             )
         )
         previous_digest = digest
+        previous_fitted = fitted
 
     stats.encoded_frames = len(prepared)
     return prepared, stats

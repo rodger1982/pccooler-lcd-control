@@ -1,102 +1,54 @@
-# PCCOOLER-LCD Control 3.0.0 Beta 1
+# PCCOOLER-LCD Control 3.0.0 Beta 4
 
-Cross-platform control, media playback, and visual layout design for PCCOOLER
-CP3 LCD displays.
+Beta 4 focuses on smoother, more consistent GIF playback.
 
-The same repository supports:
-
-- Arch Linux packages
-- Linux systemd user startup
-- Windows portable application builds
-- Windows Setup installers
-- Windows COM-port discovery
-- Linux `/dev/ttyACM*` discovery
-- Image, GIF, and MP4 backgrounds
-- Layout and widget libraries
-- Qt screen designer
-- Startup-layout persistence
-
-## Linux installation
+## New GIF defaults
 
 ```fish
-./linux/install-arch.sh
+pccooler-lcd-control play-gif animation.gif
 ```
 
-or:
+The defaults now use:
+
+```text
+32 palette colors
+1-frame queue
+0 PNG compression
+100 ms minimum delay
+1.5% visual-difference threshold
+```
+
+More aggressive frame merging:
+
+```fish
+pccooler-lcd-control play-gif animation.gif   --difference-threshold 0.03   --minimum-frame-duration 0.08
+```
+
+More color quality:
+
+```fish
+pccooler-lcd-control play-gif animation.gif --palette-colors 64
+```
+
+## Upload to GitHub
+
+Copy this release into the existing repository while preserving `.git`, then:
+
+```fish
+git add .
+git commit -m "Improve GIF playback performance"
+git push origin main
+```
+
+## Arch Linux
 
 ```fish
 makepkg -Csi
 ```
 
-Launch:
-
-```fish
-pccooler-lcd-control
-```
-
-Enable the startup-layout service:
-
-```fish
-systemctl --user enable --now pccooler-lcd-control.service
-```
-
-## Windows installer build
-
-In PowerShell:
+## Windows
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\windows\install-build-tools.ps1
+.\windowsuild-windows.ps1
 ```
-
-Open a new PowerShell window, then:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\windows\build-windows.ps1
-```
-
-The finished installer is:
-
-```text
-dist\PCCOOLER-LCD-Control-Setup.exe
-```
-
-End users install that file normally and do not need to install Python.
-
-## GitHub automated builds
-
-The `.github/workflows` directory includes Windows and Arch Linux build
-workflows. See [BUILDING.md](BUILDING.md) for full instructions.
-
-## Existing users
-
-The compatibility command remains:
-
-```text
-pccooler-lcd
-```
-
-The primary command and desktop application are:
-
-```text
-pccooler-lcd-control
-```
-
-## Beta 2 build stabilization
-
-Beta 2 fixes Windows path resolution by invoking PyInstaller with absolute paths
-from `windows/build-windows.ps1`. It also replaces separate CI workflows with one
-cross-platform workflow. Tagged builds wait for both Windows and Arch artifacts
-before publishing a GitHub release.
-
-
-## Beta 3 unified media engine
-
-- One media API for PNG, JPEG, WebP, GIF, MP4, MOV, WebM, MKV, and AVI.
-- FFmpeg video decoding on Linux and Windows.
-- Cached GIF frames and persistent FFmpeg video decoding.
-- Safe first-frame sampling for contrast-theme generation.
-- Images, GIFs, and videos can be layout backgrounds or image/media widgets.
-- The Qt preview uses the same media source as live dashboard playback.
-- `media-layout-dashboard` replaces format-specific background playback internally.

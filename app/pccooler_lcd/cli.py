@@ -725,6 +725,22 @@ def main():
     command.set_defaults(func=media_layout_dashboard_cmd)
 
     command = sub.add_parser(
+        "play-video",
+        help="Play a video full-screen using the media engine",
+    )
+    command.add_argument("video")
+    add_transport_options(command)
+    command.add_argument("--fps", type=float, default=1.6)
+    command.add_argument(
+        "--fit",
+        choices=("cover", "contain"),
+        default="cover",
+    )
+    command.add_argument("--palette-colors", type=int, default=32)
+    command.add_argument("--png-compression", type=int, default=9)
+    command.set_defaults(func=play_video_cmd)
+
+    command = sub.add_parser(
         "benchmark-transfer",
         help="Measure realistic CP3 full-frame transfer speed",
     )

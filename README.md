@@ -1,30 +1,29 @@
-<p align="center">
-  <img src="assets/branding/github-banner.png" alt="PCCOOLER-LCD Control banner">
-</p>
+# PCCOOLER-LCD Control 3.0.0 Beta 10
 
-# PCCOOLER-LCD Control 3.0.0 Beta 9
+Beta 10 adds full-screen video playback and separates media timing from widget
+refresh timing.
 
-Beta 9 fixes the unified launcher so the transfer benchmark command can
-run normally.
+## Full-screen video test
 
 ```fish
 systemctl --user stop pccooler-lcd-control.service
 
-pccooler-lcd-control benchmark-transfer \
-  --frames 10 \
+pccooler-lcd-control play-video ~/Pictures/pccooler-images/video.mp4 \
+  --fps 1.6 \
+  --palette-colors 32 \
   --png-compression 9 \
   --chunk-delay 0.003 \
-  --timeout 10 \
-  --retries 5
+  --retries 5 \
+  --timeout 10
 ```
 
-The benchmark reports:
+## Animated layout
 
-- average PNG payload size,
-- average frame transfer time,
-- measured maximum full-frame FPS,
-- recommended stable animation FPS.
+```fish
+pccooler-lcd-control media-layout-dashboard layout.json \
+  --media-fps 1.6 \
+  --widget-refresh 1.0
+```
 
-GIF and MP4 playback still transfers complete 320×240 frames. Native
-or partial-frame protocol support would be required to exceed the
-measured device limit.
+Media frames and telemetry are now timed independently. The video background
+can advance without recollecting CPU/GPU/RAM statistics for every frame.

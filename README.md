@@ -2,27 +2,14 @@
   <img src="assets/branding/github-banner.png" alt="PCCOOLER-LCD Control banner">
 </p>
 
-# PCCOOLER-LCD Control 3.0.0 Beta 8
+# PCCOOLER-LCD Control 3.0.0 Beta 9
 
-Beta 8 fixes dashboard lifecycle behavior and adds a transfer benchmark.
-
-## Closing the GUI
-
-Closing the editor no longer stops the startup service or a running dashboard.
-Use the **Stop** button only when you intentionally want to stop a dashboard
-started by that GUI window.
-
-## Measure actual display speed
-
-Stop the service first:
+Beta 9 fixes the unified launcher so the transfer benchmark command can
+run normally.
 
 ```fish
 systemctl --user stop pccooler-lcd-control.service
-```
 
-Run:
-
-```fish
 pccooler-lcd-control benchmark-transfer \
   --frames 10 \
   --png-compression 9 \
@@ -31,7 +18,13 @@ pccooler-lcd-control benchmark-transfer \
   --retries 5
 ```
 
-The command reports the realistic maximum full-frame FPS and a recommended
-stable animation FPS. Because GIF and MP4 playback currently sends complete
-320×240 frames, it cannot exceed the measured device transfer/processing limit
-without a different native or partial-frame protocol.
+The benchmark reports:
+
+- average PNG payload size,
+- average frame transfer time,
+- measured maximum full-frame FPS,
+- recommended stable animation FPS.
+
+GIF and MP4 playback still transfers complete 320×240 frames. Native
+or partial-frame protocol support would be required to exceed the
+measured device limit.

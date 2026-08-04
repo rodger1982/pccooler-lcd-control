@@ -14,6 +14,7 @@ CLI_COMMANDS = {
     "screensaver",
     "play-video",
     "video-layout-dashboard",
+    "benchmark-transfer",
 }
 
 
@@ -38,6 +39,7 @@ def main() -> None:
             "  pccooler-lcd-control startup-dashboard\n"
             "  pccooler-lcd-control play-gif FILE\n"
             "  pccooler-lcd-control play-video FILE\n"
+            "  pccooler-lcd-control benchmark-transfer\n"
         )
         return
 

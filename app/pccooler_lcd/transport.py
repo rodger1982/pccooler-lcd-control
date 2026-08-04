@@ -12,6 +12,7 @@ from .protocol_cp3 import (
     complete_frame,
     generated_filename,
     parse_png_dimensions,
+    make_request,
     parse_reply,
     read_frame,
 )
@@ -89,6 +90,62 @@ class CP3Connection:
                 f"{label} failed: display did not return status 200"
             )
         return reply
+
+
+def request(
+    self,
+    method: str,
+    content: dict,
+    *,
+    sequence: int | None = None,
+    date_ms: int | None = None,
+):
+    if not self.port:
+        raise TransferError("Serial connection is not open")
+    sequence = sequence or random.randint(100, 60000)
+    date_ms = date_ms or int(time.time() * 1000)
+    packet = make_request(method, sequence, date_ms, content)
+    self.port.reset_input_buffer()
+    self.port.write(packet)
+    self.port.flush()
+    return self._reply(method)
+
+def send_file(
+    self,
+    payload: bytes,
+    remote_name: str,
+    retries: int = 2,
+) -> None:
+    if not payload:
+        raise ValueError("Cannot upload an empty file")
+    if not remote_name or "/" in remote_name or "\\" in remote_name:
+        raise ValueError("remote_name must be a simple filename")
+
+    last_error: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            self.open()
+            self._send_once(payload, remote_name)
+            return
+        except (
+            TransferError,
+            serial.SerialException,
+            OSError,
+        ) as error:
+            last_error = error
+            if attempt >= retries:
+                break
+            delay = 0.30 * (attempt + 1)
+            print(
+                f"File-transfer attempt {attempt + 1} failed: "
+                f"{error}; reconnecting in {delay:.2f}s..."
+            )
+            self.reconnect(delay)
+
+    raise TransferError(
+        f"File transfer failed after {retries + 1} attempts: "
+        f"{last_error}"
+    )
 
     def send_png(
         self,

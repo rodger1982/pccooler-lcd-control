@@ -102,3 +102,47 @@ def read_frame(serial_port,timeout:float=3.0)->bytes:
 def generated_filename(now:datetime|None=None)->str:
     now=now or datetime.now()
     return now.strftime("%Y-%m-%d_%H-%M-%S-")+f"{now.microsecond//1000:03d}.osd"
+
+
+def request_preview(
+    method: str,
+    sequence: int,
+    date_ms: int,
+    content: dict,
+) -> dict:
+    packet = make_request(method, sequence, date_ms, content)
+    return {
+        "method": method,
+        "sequence": sequence,
+        "date_ms": date_ms,
+        "content": content,
+        "packet_length": len(packet),
+        "packet_hex": packet.hex(),
+    }
+
+
+def describe_frame(raw: bytes) -> dict:
+    description = {
+        "length": len(raw),
+        "hex": raw.hex(),
+        "valid_start_end": bool(
+            len(raw) >= 2
+            and raw[0] == START_END
+            and raw[-1] == START_END
+        ),
+    }
+    if not description["valid_start_end"] or len(raw) < 5:
+        return description
+
+    declared = int.from_bytes(raw[1:3], "big")
+    payload = raw[3:-2]
+    description["declared_length"] = declared
+    description["checksum"] = raw[-2]
+    description["checksum_valid"] = (
+        checksum(raw[1:3], payload) == raw[-2]
+    )
+    description["payload_text"] = payload.decode(
+        "utf-8",
+        "replace",
+    )
+    return description

@@ -12,13 +12,23 @@ from PIL import Image, ImageOps, ImageSequence
 from . import __version__
 from .dashboard import collect_stats, render_dashboard, colors_from_background
 from .device import resolve_device, scan_devices
-from .protocol_cp3 import parse_png_dimensions
+from .protocol_cp3 import (
+    parse_png_dimensions,
+    request_preview,
+    describe_frame,
+)
 from .transport import CP3Connection, TransferError
 from .layout import load_layout, render_layout
 from .animation import prepare_gif, SmoothAnimationPlayer, EncodedFrame
 from .video import play_video, raw_video_frames, png_bytes as video_png_bytes
 from .media import MediaSource, detect_media_type
 from .platform import config_dir, default_device
+from .native_media import (
+    NativeMediaError,
+    prepare_media,
+    probe_media,
+    temporary_prepared_path,
+)
 
 
 def scan_cmd(args):
@@ -633,6 +643,184 @@ def benchmark_transfer_cmd(args):
     print(f"Recommended stable animation FPS: {max(1.0, fps * 0.75):.2f}")
     return 0
 
+
+def media_prepare_cmd(args):
+    source = Path(args.media).expanduser()
+    output = (
+        Path(args.output).expanduser()
+        if args.output
+        else source.with_name(f"{source.stem}-cp3.mp4")
+    )
+
+    try:
+        result = prepare_media(
+            source,
+            output,
+            width=args.width,
+            height=args.height,
+            fps=args.fps,
+            fit=args.fit,
+            crf=args.crf,
+            preset=args.preset,
+        )
+    except NativeMediaError as error:
+        raise SystemExit(str(error))
+
+    print(f"Prepared: {result.output}")
+    print(f"Codec: {result.codec}")
+    print(f"Geometry: {result.width}x{result.height}")
+    print(f"Frame rate: {result.fps:.3f}")
+    print(f"Size: {result.size / (1024 * 1024):.2f} MiB")
+    return 0
+
+
+def media_info_cmd(args):
+    try:
+        info = probe_media(args.media)
+    except NativeMediaError as error:
+        raise SystemExit(str(error))
+    print(json.dumps(info, indent=2, sort_keys=True))
+    return 0
+
+
+def media_upload_cmd(args):
+    source = Path(args.media).expanduser().resolve()
+    if not source.is_file():
+        raise SystemExit(f"Media file not found: {source}")
+
+    prepared = source
+    if not args.no_prepare:
+        prepared = (
+            Path(args.prepared_output).expanduser().resolve()
+            if args.prepared_output
+            else temporary_prepared_path(source)
+        )
+        try:
+            result = prepare_media(
+                source,
+                prepared,
+                width=args.width,
+                height=args.height,
+                fps=args.fps,
+                fit=args.fit,
+                crf=args.crf,
+                preset=args.preset,
+            )
+        except NativeMediaError as error:
+            raise SystemExit(str(error))
+        prepared = result.output
+        print(
+            f"Prepared {prepared.name}: "
+            f"{result.width}x{result.height}, "
+            f"{result.fps:.2f} FPS, "
+            f"{result.size / (1024 * 1024):.2f} MiB"
+        )
+
+    remote_name = args.remote_name or prepared.name
+    payload = prepared.read_bytes()
+
+    print("Experimental native-media file transfer")
+    print(f"Local file: {prepared}")
+    print(f"Remote name: {remote_name}")
+    print(f"Payload: {len(payload)} bytes")
+    print(
+        "This uses the confirmed POST transport / POST transported "
+        "block-transfer envelope."
+    )
+    print(
+        "The media-list/select command is not yet confirmed, so successful "
+        "transfer does not guarantee that the LCD will display the file."
+    )
+
+    if not args.execute:
+        print("Dry run only. Add --execute to send the file.")
+        return 0
+
+    with CP3Connection(
+        args.device,
+        args.timeout,
+        args.chunk_delay,
+        args.verbose,
+    ) as connection:
+        connection.send_file(
+            payload,
+            remote_name,
+            retries=args.retries,
+        )
+
+    print("The CP3 accepted the file-transfer transaction.")
+    print(
+        "Next step: inspect the device/media response and recover the "
+        "selection command."
+    )
+    return 0
+
+
+def protocol_request_cmd(args):
+    try:
+        content = json.loads(args.json)
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"Invalid JSON: {error}")
+    if not isinstance(content, dict):
+        raise SystemExit("--json must decode to an object")
+
+    sequence = args.sequence or 1000
+    date_ms = args.date_ms or int(time.time() * 1000)
+    preview = request_preview(
+        args.method,
+        sequence,
+        date_ms,
+        content,
+    )
+
+    if args.trace:
+        trace_path = Path(args.trace).expanduser()
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        trace_path.write_text(
+            json.dumps(preview, indent=2),
+            encoding="utf-8",
+        )
+        print(f"Request preview saved to {trace_path}")
+
+    print(json.dumps(preview, indent=2))
+
+    if not args.execute:
+        print("Dry run only. Add --execute to send this request.")
+        return 0
+
+    with CP3Connection(
+        args.device,
+        args.timeout,
+        args.chunk_delay,
+        args.verbose,
+    ) as connection:
+        reply = connection.request(
+            args.method,
+            content,
+            sequence=sequence,
+            date_ms=date_ms,
+        )
+
+    result = {
+        "status": reply.status,
+        "ack_number": reply.ack_number,
+        "content": reply.content,
+        "raw_hex": reply.raw.hex(),
+        "frame": describe_frame(reply.raw),
+    }
+    print(json.dumps(result, indent=2))
+
+    if args.trace:
+        reply_path = Path(args.trace).expanduser().with_suffix(
+            ".reply.json"
+        )
+        reply_path.write_text(
+            json.dumps(result, indent=2),
+            encoding="utf-8",
+        )
+        print(f"Reply saved to {reply_path}")
+    return 0
+
 def _fmt_temp(value):
     return "--°C" if value is None else f"{value:.0f}°C"
 
@@ -748,6 +936,66 @@ def main():
     command.add_argument("--frames", type=int, default=10)
     command.add_argument("--png-compression", type=int, default=9)
     command.set_defaults(func=benchmark_transfer_cmd)
+
+    command = sub.add_parser(
+        "media-info",
+        help="Inspect media with FFprobe",
+    )
+    command.add_argument("media")
+    command.set_defaults(func=media_info_cmd)
+
+    command = sub.add_parser(
+        "media-prepare",
+        help="Prepare an MP4 using recovered CP3 media settings",
+    )
+    command.add_argument("media")
+    command.add_argument("--output")
+    command.add_argument("--width", type=int, default=320)
+    command.add_argument("--height", type=int, default=240)
+    command.add_argument("--fps", type=float, default=30.0)
+    command.add_argument(
+        "--fit",
+        choices=("cover", "contain"),
+        default="cover",
+    )
+    command.add_argument("--crf", type=int, default=23)
+    command.add_argument("--preset", default="medium")
+    command.set_defaults(func=media_prepare_cmd)
+
+    command = sub.add_parser(
+        "media-upload",
+        help="Experimentally upload prepared media using CP3 block transfer",
+    )
+    command.add_argument("media")
+    add_transport_options(command)
+    command.add_argument("--execute", action="store_true")
+    command.add_argument("--no-prepare", action="store_true")
+    command.add_argument("--prepared-output")
+    command.add_argument("--remote-name")
+    command.add_argument("--width", type=int, default=320)
+    command.add_argument("--height", type=int, default=240)
+    command.add_argument("--fps", type=float, default=30.0)
+    command.add_argument(
+        "--fit",
+        choices=("cover", "contain"),
+        default="cover",
+    )
+    command.add_argument("--crf", type=int, default=23)
+    command.add_argument("--preset", default="medium")
+    command.set_defaults(func=media_upload_cmd)
+
+    command = sub.add_parser(
+        "protocol-request",
+        help="Preview or send a raw CP3 request envelope",
+    )
+    command.add_argument("method")
+    command.add_argument("--json", default="{}")
+    command.add_argument("--sequence", type=int)
+    command.add_argument("--date-ms", type=int)
+    command.add_argument("--trace")
+    command.add_argument("--execute", action="store_true")
+    add_transport_options(command)
+    command.set_defaults(func=protocol_request_cmd)
 
     command = sub.add_parser(
         "startup-dashboard",

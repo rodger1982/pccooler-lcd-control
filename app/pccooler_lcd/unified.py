@@ -15,6 +15,10 @@ CLI_COMMANDS = {
     "play-video",
     "video-layout-dashboard",
     "benchmark-transfer",
+    "protocol-request",
+    "media-upload",
+    "media-prepare",
+    "media-info",
 }
 
 
@@ -40,6 +44,9 @@ def main() -> None:
             "  pccooler-lcd-control play-gif FILE\n"
             "  pccooler-lcd-control play-video FILE\n"
             "  pccooler-lcd-control benchmark-transfer\n"
+            "  pccooler-lcd-control media-prepare FILE\n"
+            "  pccooler-lcd-control media-upload FILE\n"
+            "  pccooler-lcd-control protocol-request METHOD\n"
         )
         return
 

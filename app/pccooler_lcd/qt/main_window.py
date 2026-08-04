@@ -1035,10 +1035,16 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Layout dashboard started")
 
     def stop_dashboard(self):
-        if self.dashboard_process and self.dashboard_process.poll() is None:
+        if not self.dashboard_process:
+            self.statusBar().showMessage(
+                "No dashboard process was started by this window.",
+                3000,
+            )
+            return
+        if self.dashboard_process.poll() is None:
             self.dashboard_process.terminate()
         self.dashboard_process = None
-        self.statusBar().showMessage("Dashboard stopped")
+        self.statusBar().showMessage("Dashboard stopped", 3000)
 
     def new_layout(self):
         self.layout_model = default_layout()
@@ -1118,7 +1124,9 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def closeEvent(self, event):
-        self.stop_dashboard()
+        # Closing the editor must not stop the persistent startup service or a
+        # dashboard process. Use the Stop button when that is intentional.
         if self.media_source is not None:
             self.media_source.close()
+            self.media_source = None
         super().closeEvent(event)

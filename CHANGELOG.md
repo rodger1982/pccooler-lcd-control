@@ -1,15 +1,16 @@
 # Changelog
 
-## 3.0.0 Beta 7
+## 3.0.0 Beta 8
+
+### Fixed
+- Closing the Qt editor no longer stops the dashboard or startup service.
+- The Stop button only stops a dashboard process launched by the current GUI.
 
 ### Added
-- New project logo and GitHub banner.
-- Linux desktop icons in standard sizes.
-- Windows executable and installer icon.
-- Branded splash screen.
-- About dialog.
-- Branded README.
+- `benchmark-transfer` command to measure actual CP3 full-frame throughput.
+- Reports average frame size, transfer time, maximum FPS, and recommended
+  stable animation FPS.
 
-### Changed
-- Linux desktop launcher uses the new icon.
-- Windows builds include the branding assets.
+### Known limitation
+GIF and MP4 playback still transfers complete 320×240 frames. Beta 8 measures
+the real device limit but does not add native video decoding.

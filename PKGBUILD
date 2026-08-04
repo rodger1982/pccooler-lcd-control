@@ -1,5 +1,5 @@
 pkgname=pccooler-lcd-control
-pkgver=3.0.0b7
+pkgver=3.0.0b8
 pkgrel=1
 provides=('pccooler-lcd')
 conflicts=('pccooler-lcd')

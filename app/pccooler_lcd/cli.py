@@ -573,6 +573,66 @@ def startup_dashboard_cmd(args):
     )
     return layout_dashboard_cmd(forwarded)
 
+
+def benchmark_transfer_cmd(args):
+    from PIL import Image, ImageDraw
+    from io import BytesIO
+    import statistics
+
+    sizes = []
+    durations = []
+
+    with CP3Connection(
+        args.device,
+        args.timeout,
+        args.chunk_delay,
+        args.verbose,
+    ) as connection:
+        for index in range(args.frames):
+            image = Image.new(
+                "RGB",
+                (320, 240),
+                (
+                    (index * 37) % 256,
+                    (index * 71) % 256,
+                    (index * 19) % 256,
+                ),
+            )
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((10, 10, 310, 230), outline="white", width=3)
+            draw.text((20, 20), f"Benchmark {index + 1}", fill="white")
+
+            buffer = BytesIO()
+            image.save(
+                buffer,
+                format="PNG",
+                compress_level=args.png_compression,
+                optimize=False,
+            )
+            payload = buffer.getvalue()
+
+            started = time.monotonic()
+            connection.send_png(payload, retries=args.retries)
+            elapsed = time.monotonic() - started
+
+            sizes.append(len(payload))
+            durations.append(elapsed)
+            print(
+                f"Frame {index + 1}/{args.frames}: "
+                f"{len(payload) / 1024:.1f} KiB in {elapsed:.3f}s"
+            )
+
+    average_seconds = statistics.mean(durations)
+    average_size = statistics.mean(sizes) / 1024
+    fps = 1.0 / average_seconds if average_seconds > 0 else 0.0
+
+    print()
+    print(f"Average frame: {average_size:.1f} KiB")
+    print(f"Average transfer: {average_seconds:.3f}s")
+    print(f"Measured maximum: {fps:.2f} FPS")
+    print(f"Recommended stable animation FPS: {max(1.0, fps * 0.75):.2f}")
+    return 0
+
 def _fmt_temp(value):
     return "--°C" if value is None else f"{value:.0f}°C"
 
@@ -663,6 +723,15 @@ def main():
     command.add_argument("--media-fps", type=float, default=6.0)
     command.add_argument("--png-compression", type=int, default=1)
     command.set_defaults(func=media_layout_dashboard_cmd)
+
+    command = sub.add_parser(
+        "benchmark-transfer",
+        help="Measure realistic CP3 full-frame transfer speed",
+    )
+    add_transport_options(command)
+    command.add_argument("--frames", type=int, default=10)
+    command.add_argument("--png-compression", type=int, default=9)
+    command.set_defaults(func=benchmark_transfer_cmd)
 
     command = sub.add_parser(
         "startup-dashboard",

@@ -78,3 +78,19 @@ that its VID/PID is `1d6b:0112` before changing the sysfs `authorized` state. It
 refuses to reset an unrelated USB device and refuses to continue while the
 serial port is owned by another process.
 
+
+## Automatic reconnect
+
+Long-running dashboards now wait for the CP3 to return after a USB reset or
+brief disconnect. The transport uses bounded exponential backoff and resumes
+with the existing frame loop once the serial device becomes available again.
+
+Verbose mode shows the transition:
+
+```text
+CP3 unavailable: ... Waiting for reconnect...
+CP3 reconnected on /dev/ttyACM0.
+```
+
+The systemd user service also retains restart-on-failure protection for errors
+that cannot be recovered inside the process.

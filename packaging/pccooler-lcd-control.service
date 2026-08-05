@@ -1,7 +1,8 @@
 [Unit]
 Description=PCCOOLER-LCD Control startup layout
 After=graphical-session.target
-PartOf=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple

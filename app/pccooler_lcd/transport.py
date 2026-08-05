@@ -5,7 +5,7 @@ import time
 
 import serial
 
-from .device import resolve_device
+from .device import resolve_device, wait_for_device
 from .platform import default_device, is_windows
 from .protocol_lab import ProtocolRecorder
 from .protocol_cp3 import (
@@ -33,13 +33,20 @@ class CP3Connection:
         chunk_delay: float = 0.002,
         verbose: bool = False,
         recorder: ProtocolRecorder | None = None,
+        reconnect_timeout: float = 30.0,
+        reconnect_attempts: int = 8,
+        reconnect_base_delay: float = 0.5,
     ) -> None:
         self.device = device or default_device()
         self.timeout = timeout
         self.chunk_delay = chunk_delay
         self.verbose = verbose
         self.recorder = recorder
+        self.reconnect_timeout = reconnect_timeout
+        self.reconnect_attempts = reconnect_attempts
+        self.reconnect_base_delay = reconnect_base_delay
         self.path: str | None = None
+        self._disconnect_reported = False
         self.port: serial.Serial | None = None
 
     def open(self) -> None:
@@ -65,13 +72,61 @@ class CP3Connection:
             finally:
                 self.port = None
 
+    def _log_connection(self, message: str) -> None:
+        if self.verbose:
+            print(message)
+
+    def open_with_retry(self) -> None:
+        last_error: Exception | None = None
+        for attempt in range(self.reconnect_attempts + 1):
+            try:
+                self.open()
+                if self._disconnect_reported:
+                    self._log_connection(
+                        f"CP3 reconnected on {self.path}."
+                    )
+                self._disconnect_reported = False
+                return
+            except (
+                FileNotFoundError,
+                serial.SerialException,
+                OSError,
+            ) as error:
+                last_error = error
+                self.close()
+                if attempt >= self.reconnect_attempts:
+                    break
+                if not self._disconnect_reported:
+                    self._log_connection(
+                        f"CP3 unavailable: {error}. Waiting for reconnect..."
+                    )
+                    self._disconnect_reported = True
+                delay = min(
+                    self.reconnect_base_delay * (2 ** attempt),
+                    5.0,
+                )
+                try:
+                    wait_for_device(
+                        self.device,
+                        timeout=min(self.reconnect_timeout, delay),
+                        poll_interval=0.20,
+                    )
+                except Exception:
+                    time.sleep(delay)
+
+        raise TransferError(
+            "CP3 connection could not be restored after "
+            f"{self.reconnect_attempts + 1} attempts: {last_error}"
+        )
+
     def reconnect(self, delay: float = 0.25) -> None:
         self.close()
-        time.sleep(delay)
-        self.open()
+        if delay:
+            time.sleep(delay)
+        self.open_with_retry()
 
     def __enter__(self) -> "CP3Connection":
-        self.open()
+        self.open_with_retry()
         return self
 
     def __exit__(self, *_args) -> None:
@@ -139,12 +194,13 @@ class CP3Connection:
         last_error: Exception | None = None
         for attempt in range(retries + 1):
             try:
-                self.open()
+                self.open_with_retry()
                 self._send_once(payload, remote_name)
                 return
             except (
                 TransferError,
                 serial.SerialException,
+                FileNotFoundError,
                 OSError,
             ) as error:
                 last_error = error
@@ -177,12 +233,13 @@ class CP3Connection:
         last_error: Exception | None = None
         for attempt in range(retries + 1):
             try:
-                self.open()
+                self.open_with_retry()
                 self._send_once(image, remote_name)
                 return
             except (
                 TransferError,
                 serial.SerialException,
+                FileNotFoundError,
                 OSError,
             ) as error:
                 last_error = error

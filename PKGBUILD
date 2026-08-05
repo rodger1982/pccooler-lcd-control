@@ -7,8 +7,27 @@ replaces=('pccooler-lcd')
 pkgdesc="Cross-platform control and layout designer for PCCOOLER CP3 LCD displays"
 arch=('any')
 license=('MIT')
-depends=('ffmpeg' 'python' 'python-pyserial' 'python-psutil' 'python-pillow' 'pyside6')
-makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools')
+
+depends=(
+  'ffmpeg'
+  'python'
+  'python-pyserial'
+  'python-psutil'
+  'python-pillow'
+  'pyside6'
+)
+
+makedepends=(
+  'python-build'
+  'python-installer'
+  'python-wheel'
+  'python-setuptools'
+)
+
+checkdepends=(
+  'python-pytest'
+)
+
 source=()
 sha256sums=()
 

@@ -6,6 +6,8 @@ import sys
 CLI_COMMANDS = {
     "scan",
     "diagnose",
+    "inspect-device",
+    "reset-device",
     "send-image",
     "dashboard",
     "layout-dashboard",
@@ -48,6 +50,8 @@ def main() -> None:
             "  pccooler-lcd-control            Open the Qt application\n"
             "  pccooler-lcd-control gui        Open the Qt application\n"
             "  pccooler-lcd-control scan       Find supported displays\n"
+            "  pccooler-lcd-control inspect-device\n"
+            "  pccooler-lcd-control reset-device --sudo\n"
             "  pccooler-lcd-control dashboard  Run the default dashboard\n"
             "  pccooler-lcd-control startup-dashboard\n"
             "  pccooler-lcd-control play-gif FILE\n"

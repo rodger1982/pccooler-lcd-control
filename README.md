@@ -57,3 +57,24 @@ hardware-info overlays and true looping. Those commands are not yet recovered.
 
 Beta 14 creates one long repeated MP4 as a temporary workaround. It does not
 claim to reproduce the Windows overlay behavior yet.
+
+## Device inspection and USB reset
+
+Inspect the detected CP3 and its Linux USB path:
+
+```fish
+pccooler-lcd-control inspect-device
+```
+
+Reset an internally connected CP3 without unplugging it:
+
+```fish
+systemctl --user stop pccooler-lcd-control.service
+pccooler-lcd-control reset-device --sudo
+```
+
+The reset command resolves the serial port to its parent USB device and verifies
+that its VID/PID is `1d6b:0112` before changing the sysfs `authorized` state. It
+refuses to reset an unrelated USB device and refuses to continue while the
+serial port is owned by another process.
+

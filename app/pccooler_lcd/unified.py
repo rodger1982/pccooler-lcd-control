@@ -22,6 +22,10 @@ CLI_COMMANDS = {
     "protocol-decode",
     "protocol-catalog",
     "media-upload",
+    "native-media-clear-state",
+    "native-media-status",
+    "native-media-activate",
+    "media-loop-prepare",
     "media-prepare",
     "media-info",
 }

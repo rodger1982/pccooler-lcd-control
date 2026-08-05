@@ -1,19 +1,21 @@
 # Changelog
 
-## 3.0.0 Beta 13 — Protocol Lab
+## 3.0.0 Beta 14 — Native Media Startup
 
 ### Added
-- Protocol recorder for TX, RX, and file-data events.
-- Human-readable CP3 packet decoder.
-- Protocol trace viewer with compact summary mode.
-- Guarded packet replay for non-file request packets.
-- Rate-limited protocol probing from a candidate-method file.
-- Confirmed/unknown protocol command catalog.
-- JSON session traces for `protocol-request`.
-- Protocol test fixtures and candidate read-only method list.
+- Long-loop MP4 preparation with `-stream_loop -1`.
+- `media-loop-prepare` command.
+- `native-media-activate` command with dry-run protection.
+- Persistent local state describing the most recent native-media upload.
+- `native-media-status` and `native-media-clear-state`.
 
-### Safety
-- Replay ignores file-transfer packets.
-- Probing is dry-run unless `--execute` is provided.
-- Probing stops after a configurable number of consecutive failures.
-- No destructive media-delete or reset guesses are included.
+### Confirmed behavior
+- Uploaded MP4 files persist on the CP3.
+- The CP3 plays the uploaded MP4 after reboot.
+- Native playback is smooth because the CP3 decodes the file locally.
+
+### Remaining limitation
+- The Windows command that enables looping and hardware-info overlays
+  has not yet been recovered.
+- Beta 14 temporarily works around the missing loop command by creating
+  one long repeated MP4.

@@ -2,74 +2,58 @@
   <img src="assets/branding/github-banner.png" alt="PCCOOLER-LCD Control banner">
 </p>
 
-# PCCOOLER-LCD Control 3.0.0 Beta 13
+# PCCOOLER-LCD Control 3.0.0 Beta 14
 
-Beta 13 is the **Protocol Lab** release.
+Beta 14 adds a practical native-media startup workflow.
 
-## Show the protocol catalog
+The CP3 has now been confirmed to store and decode uploaded MP4 files locally.
+This provides smooth video playback without streaming PNG frames.
 
-```fish
-pccooler-lcd-control protocol-catalog
-```
-
-## Decode a packet
+## Prepare a one-hour repeated MP4
 
 ```fish
-pccooler-lcd-control protocol-decode \
-  --hex 5a005631203230300d0a...
+pccooler-lcd-control media-loop-prepare \
+  ~/Pictures/pccooler-images/4-3.mp4 \
+  --output ~/Pictures/pccooler-images/4-3-cp3-loop.mp4 \
+  --duration-minutes 60
 ```
 
-## Record a request session
-
-```fish
-pccooler-lcd-control protocol-request "GET status" \
-  --json '{}' \
-  --execute \
-  --session-trace /tmp/cp3-session.json
-```
-
-## View a trace
-
-```fish
-pccooler-lcd-control protocol-trace-show \
-  /tmp/cp3-session.json \
-  --summary
-```
-
-## Replay a recorded non-file request
+## Prepare, upload, and activate
 
 Dry run:
 
 ```fish
-pccooler-lcd-control protocol-replay \
-  /tmp/cp3-session.json
+pccooler-lcd-control native-media-activate \
+  ~/Pictures/pccooler-images/4-3.mp4 \
+  --duration-minutes 60
 ```
 
 Execute:
 
 ```fish
-pccooler-lcd-control protocol-replay \
-  /tmp/cp3-session.json \
-  --execute
-```
+systemctl --user stop pccooler-lcd-control.service
 
-## Rate-limited probing
-
-```fish
-pccooler-lcd-control protocol-probe \
-  docs/protocol/candidate-read-methods.txt
-```
-
-Nothing is sent without `--execute`.
-
-```fish
-pccooler-lcd-control protocol-probe \
-  docs/protocol/candidate-read-methods.txt \
+pccooler-lcd-control native-media-activate \
+  ~/Pictures/pccooler-images/4-3.mp4 \
+  --duration-minutes 60 \
+  --remote-name startup.mp4 \
   --execute \
-  --interval 1.0 \
-  --stop-after 5 \
-  --trace /tmp/cp3-probe.json
+  --verbose \
+  --trace /tmp/native-media-upload.json
 ```
 
-Only read-style candidate methods are included. Electron IPC names are not
-assumed to be CP3 wire-protocol methods.
+Power-cycle the CP3 if playback does not start immediately.
+
+## Show the recorded state
+
+```fish
+pccooler-lcd-control native-media-status
+```
+
+## Important limitation
+
+The official Windows application sends additional commands that restore
+hardware-info overlays and true looping. Those commands are not yet recovered.
+
+Beta 14 creates one long repeated MP4 as a temporary workaround. It does not
+claim to reproduce the Windows overlay behavior yet.

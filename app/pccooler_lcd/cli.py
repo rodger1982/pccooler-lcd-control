@@ -34,6 +34,7 @@ from .native_media import (
     prepare_media,
     probe_media,
     temporary_prepared_path,
+    prepare_looped_media,
 )
 
 
@@ -982,6 +983,162 @@ def protocol_probe_cmd(args):
             time.sleep(args.interval)
     return 0
 
+
+def native_media_state_path() -> Path:
+    path = config_dir() / "native-media-state.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def save_native_media_state(data: dict) -> None:
+    native_media_state_path().write_text(
+        json.dumps(data, indent=2),
+        encoding="utf-8",
+    )
+
+
+def media_loop_prepare_cmd(args):
+    source = Path(args.media).expanduser()
+    output = (
+        Path(args.output).expanduser()
+        if args.output
+        else source.with_name(f"{source.stem}-cp3-loop.mp4")
+    )
+
+    try:
+        result = prepare_looped_media(
+            source,
+            output,
+            duration_minutes=args.duration_minutes,
+            width=args.width,
+            height=args.height,
+            fps=args.fps,
+            fit=args.fit,
+            crf=args.crf,
+            preset=args.preset,
+        )
+    except NativeMediaError as error:
+        raise SystemExit(str(error))
+
+    print(f"Prepared long-loop MP4: {result.output}")
+    print(f"Geometry: {result.width}x{result.height}")
+    print(f"Frame rate: {result.fps:.3f}")
+    print(f"Size: {result.size / (1024 * 1024):.2f} MiB")
+    print(
+        f"Approximate playback duration: "
+        f"{args.duration_minutes:.1f} minutes"
+    )
+    return 0
+
+
+def native_media_activate_cmd(args):
+    source = Path(args.media).expanduser().resolve()
+    if not source.is_file():
+        raise SystemExit(f"Media file not found: {source}")
+
+    prepared = (
+        Path(args.prepared_output).expanduser().resolve()
+        if args.prepared_output
+        else source.with_name(f"{source.stem}-cp3-loop.mp4")
+    )
+
+    try:
+        result = prepare_looped_media(
+            source,
+            prepared,
+            duration_minutes=args.duration_minutes,
+            width=args.width,
+            height=args.height,
+            fps=args.fps,
+            fit=args.fit,
+            crf=args.crf,
+            preset=args.preset,
+        )
+    except NativeMediaError as error:
+        raise SystemExit(str(error))
+
+    remote_name = args.remote_name or prepared.name
+    print(
+        f"Prepared native media: {prepared.name} "
+        f"({result.size / (1024 * 1024):.2f} MiB)"
+    )
+    print(
+        "Uploading this file will make it persistent on the CP3. "
+        "The device has already been confirmed to play uploaded MP4 files "
+        "after reboot."
+    )
+    print(
+        "Linux does not yet know the Windows overlay/loop-control command. "
+        "This build uses one long repeated MP4 as a temporary loop."
+    )
+
+    if not args.execute:
+        print("Dry run only. Add --execute to upload and activate.")
+        return 0
+
+    recorder = (
+        ProtocolRecorder(args.trace)
+        if args.trace
+        else None
+    )
+
+    with CP3Connection(
+        args.device,
+        args.timeout,
+        args.chunk_delay,
+        args.verbose,
+        recorder=recorder,
+    ) as connection:
+        connection.send_file(
+            prepared.read_bytes(),
+            remote_name,
+            retries=args.retries,
+        )
+
+    state = {
+        "source": str(source),
+        "prepared": str(prepared),
+        "remote_name": remote_name,
+        "duration_minutes": args.duration_minutes,
+        "width": result.width,
+        "height": result.height,
+        "fps": result.fps,
+        "size": result.size,
+        "status": "uploaded",
+        "notes": (
+            "Native MP4 accepted. Windows is still required to restore "
+            "hardware-info overlays until the control command is recovered."
+        ),
+    }
+    save_native_media_state(state)
+
+    print("Native MP4 upload completed successfully.")
+    print(
+        "Power-cycle the device if playback does not begin immediately. "
+        "The CP3 should play the uploaded MP4 after boot."
+    )
+    return 0
+
+
+def native_media_status_cmd(_args):
+    path = native_media_state_path()
+    if not path.is_file():
+        print("No Linux native-media state has been recorded.")
+        return 0
+    print(path.read_text(encoding="utf-8"))
+    return 0
+
+
+def native_media_clear_state_cmd(_args):
+    path = native_media_state_path()
+    if path.exists():
+        path.unlink()
+    print(
+        "Local native-media state cleared. "
+        "This does not erase media stored on the CP3."
+    )
+    return 0
+
 def _fmt_temp(value):
     return "--°C" if value is None else f"{value:.0f}°C"
 
@@ -1207,6 +1364,60 @@ def main():
     command.add_argument("--trace")
     add_transport_options(command)
     command.set_defaults(func=protocol_probe_cmd)
+
+    command = sub.add_parser(
+        "media-loop-prepare",
+        help="Create one long repeated MP4 for native CP3 playback",
+    )
+    command.add_argument("media")
+    command.add_argument("--output")
+    command.add_argument("--duration-minutes", type=float, default=60.0)
+    command.add_argument("--width", type=int, default=320)
+    command.add_argument("--height", type=int, default=240)
+    command.add_argument("--fps", type=float, default=30.0)
+    command.add_argument(
+        "--fit",
+        choices=("cover", "contain"),
+        default="cover",
+    )
+    command.add_argument("--crf", type=int, default=23)
+    command.add_argument("--preset", default="medium")
+    command.set_defaults(func=media_loop_prepare_cmd)
+
+    command = sub.add_parser(
+        "native-media-activate",
+        help="Prepare and upload a persistent long-loop MP4",
+    )
+    command.add_argument("media")
+    add_transport_options(command)
+    command.add_argument("--execute", action="store_true")
+    command.add_argument("--prepared-output")
+    command.add_argument("--remote-name")
+    command.add_argument("--duration-minutes", type=float, default=60.0)
+    command.add_argument("--width", type=int, default=320)
+    command.add_argument("--height", type=int, default=240)
+    command.add_argument("--fps", type=float, default=30.0)
+    command.add_argument(
+        "--fit",
+        choices=("cover", "contain"),
+        default="cover",
+    )
+    command.add_argument("--crf", type=int, default=23)
+    command.add_argument("--preset", default="medium")
+    command.add_argument("--trace")
+    command.set_defaults(func=native_media_activate_cmd)
+
+    command = sub.add_parser(
+        "native-media-status",
+        help="Show the last Linux native-media upload state",
+    )
+    command.set_defaults(func=native_media_status_cmd)
+
+    command = sub.add_parser(
+        "native-media-clear-state",
+        help="Clear local native-media state without touching the CP3",
+    )
+    command.set_defaults(func=native_media_clear_state_cmd)
 
     command = sub.add_parser(
         "startup-dashboard",

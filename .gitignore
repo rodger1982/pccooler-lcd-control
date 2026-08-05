@@ -1,11 +1,28 @@
+# Python
 __pycache__/
 *.py[cod]
 .venv/
 .venv-win/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build and packaging output
 build/
 dist/
 pkg/
 src/
 *.egg-info/
+*.whl
 *.pkg.tar.zst
-*.zip
+
+# Local patches and archives
+*.patch
+*.tar.gz
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+archive/

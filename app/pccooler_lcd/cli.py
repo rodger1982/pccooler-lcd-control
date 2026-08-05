@@ -11,7 +11,13 @@ from PIL import Image, ImageOps, ImageSequence
 
 from . import __version__
 from .dashboard import collect_stats, render_dashboard, colors_from_background
-from .device import resolve_device, scan_devices
+from .device import (
+    DeviceResetError,
+    inspect_device,
+    reset_device,
+    resolve_device,
+    scan_devices,
+)
 from .protocol_cp3 import (
     parse_png_dimensions,
     request_preview,
@@ -58,6 +64,64 @@ def diagnose_cmd(args):
     print("Display geometry: 320x240")
     print("Transport: persistent CDC ACM serial")
     print("GIF mode: pre-rendered cached PNG frames")
+    return 0
+
+
+
+def inspect_device_cmd(args):
+    try:
+        info = inspect_device(args.device)
+    except (DeviceResetError, FileNotFoundError) as error:
+        raise SystemExit(str(error))
+
+    if args.json:
+        print(json.dumps(info.to_dict(), indent=2))
+        return 0
+
+    print('PCCOOLER CP3 device')
+    print(f'  Serial device: {info.serial_device}')
+    print(
+        '  USB ID: '
+        f'{info.vid:04x}:{info.pid:04x}'
+        if info.vid is not None and info.pid is not None
+        else '  USB ID: unknown'
+    )
+    print(f'  Manufacturer: {info.manufacturer or "unknown"}')
+    print(f'  Product: {info.product or info.description or "unknown"}')
+    print(f'  Serial number: {info.serial_number or "unknown"}')
+    print(f'  USB bus path: {info.usb_bus_path or "unavailable"}')
+    print(f'  USB sysfs path: {info.usb_sysfs_path or "unavailable"}')
+    print(f'  Connected: {"yes" if info.connected else "no"}')
+    if info.port_in_use is None:
+        print('  Port in use: unknown')
+    else:
+        print(f'  Port in use: {"yes" if info.port_in_use else "no"}')
+    if info.port_users:
+        print('  Port users:')
+        for line in info.port_users:
+            print(f'    {line}')
+    return 0
+
+
+def reset_device_cmd(args):
+    print('Locating PCCOOLER CP3...')
+    try:
+        before = inspect_device(args.device)
+        print(f'  Serial device: {before.serial_device}')
+        print(f'  USB bus path: {before.usb_bus_path or "unknown"}')
+        print('Resetting USB device...')
+        after = reset_device(
+            args.device,
+            use_sudo=args.sudo,
+            disconnect_delay=args.disconnect_delay,
+            reconnect_timeout=args.reconnect_timeout,
+        )
+    except (DeviceResetError, FileNotFoundError) as error:
+        raise SystemExit(str(error))
+
+    print('CP3 reconnected successfully.')
+    print(f'  Serial device: {after.serial_device}')
+    print(f'  USB bus path: {after.usb_bus_path or "unknown"}')
     return 0
 
 
@@ -1162,6 +1226,28 @@ def main():
     command = sub.add_parser("diagnose")
     command.add_argument("--device", default=default_device())
     command.set_defaults(func=diagnose_cmd)
+
+    command = sub.add_parser(
+        "inspect-device",
+        help="Inspect CP3 serial and USB state",
+    )
+    command.add_argument("--device", default=default_device())
+    command.add_argument("--json", action="store_true")
+    command.set_defaults(func=inspect_device_cmd)
+
+    command = sub.add_parser(
+        "reset-device",
+        help="Reset the CP3 through Linux USB sysfs",
+    )
+    command.add_argument("--device", default=default_device())
+    command.add_argument(
+        "--sudo",
+        action="store_true",
+        help="Use sudo only for the sysfs authorization writes",
+    )
+    command.add_argument("--disconnect-delay", type=float, default=1.0)
+    command.add_argument("--reconnect-timeout", type=float, default=15.0)
+    command.set_defaults(func=reset_device_cmd)
 
     command = sub.add_parser("send-image")
     command.add_argument("image")
